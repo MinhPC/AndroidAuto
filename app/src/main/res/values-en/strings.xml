@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Car Launcher</string>
+    <string name="pin_app">Pin to quick bar</string>
+    <string name="unpin_app">Unpin</string>
+    <string name="app_info">App info</string>
+    <string name="not_default_home">Not the default home screen yet</string>
+    <string name="set_as_default">Set as default</string>
+    <string name="open_current_launcher">Open current launcher settings</string>
+    <string name="default_home_hint">If the button does nothing: Settings → Apps → Default apps → Home app. Or open the settings of the current launcher → Open by default → Clear defaults, then press Home.</string>
+    <string name="set_default_manual">Could not open settings. Go to Settings → Apps → Default apps → Home app.</string>
+    <string name="home_debug_info">Android API %1$d · Current launcher: %2$s</string>
+    <string name="map_panel_title">Waze map</string>
+    <string name="map_panel_hint">Tap the button below to open Waze in this area. If Waze opens full screen, the firmware does not support floating windows.</string>
+    <string name="open_waze_half">Open Waze on half the screen</string>
+    <string name="waze_not_installed">Waze is not installed. Install Waze, then come back to the home screen.</string>
+    <string name="app_version">Version %1$s</string>
+    <string name="check_update">Check for updates</string>
+    <string name="checking_update">Checking…</string>
+    <string name="up_to_date">Up to date</string>
+    <string name="update_available">Update to %1$s</string>
+    <string name="downloading_update">Downloading… %1$d%%</string>
+    <string name="installing_update">Installing…</string>
+    <string name="update_not_configured">No update source configured</string>
+    <string name="update_retry">Retry</string>
+    <string name="update_error_network">Could not reach the update server</string>
+    <string name="update_error_invalid">The update file is invalid</string>
+    <string name="update_error_permission">Allow installs from this app, then tap again</string>
+    <string name="update_install_failed">The update could not be installed</string>
+</resources>

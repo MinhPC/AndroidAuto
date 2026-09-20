@@ -1,0 +1,105 @@
+package com.minhphan.launcher
+
+import android.app.Application
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.Rect
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.minhphan.launcher.data.AppInfo
+import com.minhphan.launcher.data.AppRepository
+import com.minhphan.launcher.data.FavoritesStore
+import com.minhphan.launcher.update.UpdateInfo
+import com.minhphan.launcher.update.UpdateManager
+import com.minhphan.launcher.update.UpdateState
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+
+class LauncherViewModel(application: Application) : AndroidViewModel(application) {
+    private val repository = AppRepository(application)
+    private val store = FavoritesStore(application)
+    private val updates = UpdateManager(application, viewModelScope)
+
+    val versionName: String = updates.currentVersionName
+    val updateState: StateFlow<UpdateState> = updates.state
+
+    val apps: StateFlow<List<AppInfo>> = repository.changes()
+        .conflate()
+        .map { repository.loadApps() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val favorites: StateFlow<List<AppInfo>> = combine(apps, store.keys) { apps, keys ->
+        val byKey = apps.associateBy { it.key }
+        keys.orEmpty().mapNotNull(byKey::get)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** The installed Waze app, or null. Read from the launcher's own app list, so no extra permission is needed. */
+    val waze: StateFlow<AppInfo?> = apps
+        .map { list -> list.firstOrNull { it.packageName == WAZE_PACKAGE } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    private val _homeEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    /** Emits each time the Home button is pressed while the launcher is already showing. */
+    val homeEvents: SharedFlow<Unit> = _homeEvents
+
+    init {
+        updates.checkOnStart()
+
+        // First run: pin the car's default maps / music / messaging / phone apps.
+        viewModelScope.launch {
+            val loaded = apps.first { it.isNotEmpty() }
+            if (store.keys.value == null) store.set(defaultFavorites(loaded))
+        }
+    }
+
+    fun onHomePressed() {
+        _homeEvents.tryEmit(Unit)
+    }
+
+    fun launch(app: AppInfo) = repository.launch(app)
+
+    fun checkForUpdate() = updates.check(manual = true)
+
+    fun installUpdate(info: UpdateInfo) = updates.install(info)
+
+    fun launchInBounds(app: AppInfo, bounds: Rect) = repository.launchInBounds(app, bounds)
+
+    fun openAppInfo(app: AppInfo) = repository.openAppInfo(app)
+
+    fun toggleFavorite(app: AppInfo) {
+        val current = store.keys.value.orEmpty()
+        when {
+            app.key in current -> store.set(current - app.key)
+            current.size < MAX_FAVORITES -> store.set(current + app.key)
+        }
+    }
+
+    private fun defaultFavorites(apps: List<AppInfo>): List<String> {
+        val pm = getApplication<Application>().packageManager
+        val intents = listOf(
+            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_APP_MAPS),
+            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_APP_MUSIC),
+            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_APP_MESSAGING),
+            Intent(Intent.ACTION_DIAL),
+        )
+        return intents
+            .mapNotNull { pm.resolveActivity(it, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName }
+            .mapNotNull { pkg -> apps.firstOrNull { it.packageName == pkg }?.key }
+            .distinct()
+            .take(MAX_FAVORITES)
+    }
+
+    companion object {
+        const val MAX_FAVORITES = 4
+        private const val WAZE_PACKAGE = "com.waze"
+    }
+}

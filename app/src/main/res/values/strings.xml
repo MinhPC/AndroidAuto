@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Car Launcher</string>
+    <string name="pin_app">Ghim vào thanh nhanh</string>
+    <string name="unpin_app">Bỏ ghim</string>
+    <string name="app_info">Thông tin ứng dụng</string>
+    <string name="not_default_home">Chưa là màn hình chính mặc định</string>
+    <string name="set_as_default">Đặt làm mặc định</string>
+    <string name="open_current_launcher">Mở cài đặt launcher hiện tại</string>
+    <string name="default_home_hint">Nếu nút không phản hồi: Cài đặt → Ứng dụng → Ứng dụng mặc định → Màn hình chính. Hoặc mở cài đặt launcher hiện tại → Mở theo mặc định → Xóa mặc định, rồi bấm Home.</string>
+    <string name="set_default_manual">Không mở được cài đặt. Hãy vào Cài đặt → Ứng dụng → Ứng dụng mặc định → Màn hình chính.</string>
+    <string name="home_debug_info">Android API %1$d · Launcher hiện tại: %2$s</string>
+    <string name="map_panel_title">Bản đồ Waze</string>
+    <string name="map_panel_hint">Bấm nút bên dưới để mở Waze vào khung này. Nếu Waze mở toàn màn hình thì firmware chưa hỗ trợ cửa sổ nổi.</string>
+    <string name="open_waze_half">Mở Waze ở nửa màn hình</string>
+    <string name="waze_not_installed">Chưa cài Waze. Hãy cài Waze rồi quay lại màn hình chính.</string>
+    <string name="app_version">Phiên bản %1$s</string>
+    <string name="check_update">Kiểm tra cập nhật</string>
+    <string name="checking_update">Đang kiểm tra…</string>
+    <string name="up_to_date">Đã là bản mới nhất</string>
+    <string name="update_available">Cập nhật lên %1$s</string>
+    <string name="downloading_update">Đang tải… %1$d%%</string>
+    <string name="installing_update">Đang cài đặt…</string>
+    <string name="update_not_configured">Chưa cấu hình nguồn cập nhật</string>
+    <string name="update_retry">Thử lại</string>
+    <string name="update_error_network">Không kết nối được máy chủ cập nhật</string>
+    <string name="update_error_invalid">Tệp cập nhật không hợp lệ</string>
+    <string name="update_error_permission">Hãy bật cho phép cài đặt từ nguồn này rồi bấm lại</string>
+    <string name="update_install_failed">Cài đặt cập nhật thất bại</string>
+</resources>
