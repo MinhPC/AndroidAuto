@@ -1,1 +1,1 @@
-Khung bản đồ Waze ở nửa màn hình, nút đặt làm launcher mặc định và cập nhật ngay trong app.
+Thêm màn hình Chẩn đoán cửa sổ và nút thử chia đôi màn hình với Google Maps hoặc Waze.

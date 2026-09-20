@@ -10,10 +10,10 @@
     <string name="default_home_hint">If the button does nothing: Settings → Apps → Default apps → Home app. Or open the settings of the current launcher → Open by default → Clear defaults, then press Home.</string>
     <string name="set_default_manual">Could not open settings. Go to Settings → Apps → Default apps → Home app.</string>
     <string name="home_debug_info">Android API %1$d · Current launcher: %2$s</string>
-    <string name="map_panel_title">Waze map</string>
-    <string name="map_panel_hint">Tap the button below to open Waze in this area. If Waze opens full screen, the firmware does not support floating windows.</string>
-    <string name="open_waze_half">Open Waze on half the screen</string>
-    <string name="waze_not_installed">Waze is not installed. Install Waze, then come back to the home screen.</string>
+    <string name="map_panel_title">Map</string>
+    <string name="map_panel_hint">Tap a button below to open the map in this area. If the app opens full screen, the firmware does not support floating windows. Try the Diagnostics screen.</string>
+    <string name="open_map_half">Open %1$s on half the screen</string>
+    <string name="map_not_installed">Google Maps or Waze is not installed.</string>
     <string name="app_version">Version %1$s</string>
     <string name="check_update">Check for updates</string>
     <string name="checking_update">Checking…</string>
@@ -27,4 +27,12 @@
     <string name="update_error_invalid">The update file is invalid</string>
     <string name="update_error_permission">Allow installs from this app, then tap again</string>
     <string name="update_install_failed">The update could not be installed</string>
+    <string name="diagnostics_button">Window diagnostics</string>
+    <string name="diagnostics_title">Window diagnostics</string>
+    <string name="diagnostics_close">Close</string>
+    <string name="split_hint">How to test split screen: (1) Enable the Car Launcher split-screen accessibility service in the settings page that opens. (2) Tap Try split below: the app opens the map, then sends the Android split-screen command. If the firmware supports it, the map takes one half and the launcher shows in the other. Then reopen Diagnostics and check the line for multi-window mode.</string>
+    <string name="enable_split_service">Enable split-screen accessibility service</string>
+    <string name="try_split_with">Try split with %1$s</string>
+    <string name="split_service_label">Car Launcher split screen</string>
+    <string name="split_service_description">Only used to send the Android split-screen command. It does not read the screen or track what you do.</string>
 </resources>

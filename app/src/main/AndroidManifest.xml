@@ -13,8 +13,11 @@
         android:name="android.hardware.touchscreen"
         android:required="false" />
 
-    <!-- Used only to pick default pinned apps and to see which Home app is currently active. -->
+    <!-- Used only to pick default pinned apps, to see which Home app is active, and for the diagnostics screen. -->
     <queries>
+        <package android:name="com.google.android.apps.maps" />
+        <package android:name="com.waze" />
+        <package android:name="com.google.android.gms" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.APP_MAPS" />
@@ -74,6 +77,20 @@
         <receiver
             android:name=".update.InstallResultReceiver"
             android:exported="false" />
+
+        <!-- Optional: only sends Android's split-screen action; subscribes to no events, reads no content. -->
+        <service
+            android:name=".diagnostics.SplitScreenService"
+            android:exported="false"
+            android:label="@string/split_service_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/split_screen_service" />
+        </service>
     </application>
 
 </manifest>

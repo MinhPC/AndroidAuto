@@ -10,10 +10,10 @@
     <string name="default_home_hint">Nếu nút không phản hồi: Cài đặt → Ứng dụng → Ứng dụng mặc định → Màn hình chính. Hoặc mở cài đặt launcher hiện tại → Mở theo mặc định → Xóa mặc định, rồi bấm Home.</string>
     <string name="set_default_manual">Không mở được cài đặt. Hãy vào Cài đặt → Ứng dụng → Ứng dụng mặc định → Màn hình chính.</string>
     <string name="home_debug_info">Android API %1$d · Launcher hiện tại: %2$s</string>
-    <string name="map_panel_title">Bản đồ Waze</string>
-    <string name="map_panel_hint">Bấm nút bên dưới để mở Waze vào khung này. Nếu Waze mở toàn màn hình thì firmware chưa hỗ trợ cửa sổ nổi.</string>
-    <string name="open_waze_half">Mở Waze ở nửa màn hình</string>
-    <string name="waze_not_installed">Chưa cài Waze. Hãy cài Waze rồi quay lại màn hình chính.</string>
+    <string name="map_panel_title">Bản đồ</string>
+    <string name="map_panel_hint">Bấm nút bên dưới để mở bản đồ vào khung này. Nếu app mở toàn màn hình thì firmware chưa hỗ trợ cửa sổ nổi. Hãy thử mục Chẩn đoán.</string>
+    <string name="open_map_half">Mở %1$s ở nửa màn hình</string>
+    <string name="map_not_installed">Chưa cài Google Maps hoặc Waze.</string>
     <string name="app_version">Phiên bản %1$s</string>
     <string name="check_update">Kiểm tra cập nhật</string>
     <string name="checking_update">Đang kiểm tra…</string>
@@ -27,4 +27,12 @@
     <string name="update_error_invalid">Tệp cập nhật không hợp lệ</string>
     <string name="update_error_permission">Hãy bật cho phép cài đặt từ nguồn này rồi bấm lại</string>
     <string name="update_install_failed">Cài đặt cập nhật thất bại</string>
+    <string name="diagnostics_button">Chẩn đoán cửa sổ</string>
+    <string name="diagnostics_title">Chẩn đoán cửa sổ</string>
+    <string name="diagnostics_close">Đóng</string>
+    <string name="split_hint">Cách thử chia đôi: (1) Bật dịch vụ Trợ năng Car Launcher chia đôi màn hình trong trang cài đặt vừa mở. (2) Bấm nút Thử chia đôi bên dưới: app mở bản đồ rồi gửi lệnh chia đôi màn hình của Android. Nếu firmware hỗ trợ, bản đồ chiếm một nửa và launcher hiện ở nửa còn lại. Sau đó mở lại Chẩn đoán và xem dòng Launcher đang ở chế độ nhiều cửa sổ.</string>
+    <string name="enable_split_service">Bật dịch vụ Trợ năng chia đôi</string>
+    <string name="try_split_with">Thử chia đôi với %1$s</string>
+    <string name="split_service_label">Car Launcher chia đôi màn hình</string>
+    <string name="split_service_description">Chỉ dùng để gửi lệnh chia đôi màn hình của Android. Không đọc nội dung màn hình và không theo dõi thao tác của bạn.</string>
 </resources>

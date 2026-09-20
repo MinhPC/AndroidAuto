@@ -9,10 +9,13 @@ import androidx.lifecycle.viewModelScope
 import com.minhphan.launcher.data.AppInfo
 import com.minhphan.launcher.data.AppRepository
 import com.minhphan.launcher.data.FavoritesStore
+import com.minhphan.launcher.diagnostics.SplitScreenService
 import com.minhphan.launcher.update.UpdateInfo
 import com.minhphan.launcher.update.UpdateManager
 import com.minhphan.launcher.update.UpdateState
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -41,10 +44,15 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         keys.orEmpty().mapNotNull(byKey::get)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    /** The installed Waze app, or null. Read from the launcher's own app list, so no extra permission is needed. */
-    val waze: StateFlow<AppInfo?> = apps
-        .map { list -> list.firstOrNull { it.packageName == WAZE_PACKAGE } }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    /** Installed map apps (Google Maps first), read from the launcher's own app list. */
+    val mapApps: StateFlow<List<AppInfo>> = apps
+        .map { list -> MAP_PACKAGES.mapNotNull { pkg -> list.firstOrNull { it.packageName == pkg } } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    private val _splitCommandSent = MutableStateFlow<Boolean?>(null)
+
+    /** Result of the last "try split screen": true = command sent, false = accessibility service not enabled. */
+    val splitCommandSent: StateFlow<Boolean?> = _splitCommandSent
 
     private val _homeEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
@@ -73,6 +81,18 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun launchInBounds(app: AppInfo, bounds: Rect) = repository.launchInBounds(app, bounds)
 
+    /**
+     * Opens [app] full screen, then asks Android to split the screen: the standard split-screen action, sent
+     * through the accessibility service. The launcher (the Home app) is expected to fill the other half.
+     */
+    fun trySplitScreen(app: AppInfo) {
+        repository.launch(app)
+        viewModelScope.launch {
+            delay(SPLIT_DELAY_MS) // let the app reach the foreground first
+            _splitCommandSent.value = SplitScreenService.toggleSplitScreen()
+        }
+    }
+
     fun openAppInfo(app: AppInfo) = repository.openAppInfo(app)
 
     fun toggleFavorite(app: AppInfo) {
@@ -100,6 +120,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     companion object {
         const val MAX_FAVORITES = 4
-        private const val WAZE_PACKAGE = "com.waze"
+        private const val SPLIT_DELAY_MS = 2_000L
+        private val MAP_PACKAGES = listOf("com.google.android.apps.maps", "com.waze")
     }
 }

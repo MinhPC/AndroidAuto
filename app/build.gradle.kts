@@ -8,8 +8,8 @@ plugins {
 }
 
 // Bump both on every release. The updater compares versionCode, so it must always increase.
-val appVersionCode = 2
-val appVersionName = "1.1.0"
+val appVersionCode = 3
+val appVersionName = "1.2.0"
 
 // HTTPS folder that hosts update.json and the APKs (see gradle.properties). Empty disables in-app updates.
 val updateBaseUrl = providers.gradleProperty("UPDATE_BASE_URL").getOrElse("").trim().trimEnd('/')

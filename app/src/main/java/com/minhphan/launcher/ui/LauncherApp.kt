@@ -1,8 +1,10 @@
 package com.minhphan.launcher.ui
 
 import android.graphics.Rect
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -22,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -43,7 +46,9 @@ fun LauncherApp(viewModel: LauncherViewModel) {
     val pinnedKeys = remember(pinned) { pinned.mapTo(HashSet()) { it.key } }
     val canPinMore = pinned.size < LauncherViewModel.MAX_FAVORITES
     val gridState = rememberLazyGridState()
-    val waze by viewModel.waze.collectAsStateWithLifecycle()
+    val mapApps by viewModel.mapApps.collectAsStateWithLifecycle()
+    val splitCommandSent by viewModel.splitCommandSent.collectAsStateWithLifecycle()
+    var showDiagnostics by rememberSaveable { mutableStateOf(false) }
     val updateState by viewModel.updateState.collectAsStateWithLifecycle()
     val updateBar: @Composable () -> Unit = {
         UpdateBar(
@@ -85,53 +90,69 @@ fun LauncherApp(viewModel: LauncherViewModel) {
         )
     }
 
-    BoxWithConstraints(
+    Box(
         Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .systemBarsPadding()
-            .padding(24.dp),
+            .background(MaterialTheme.colorScheme.background),
     ) {
-        if (maxWidth > maxHeight) {
-            // Landscape car display: left half = clock, pinned apps and all apps;
-            // right half = the map, where Waze is opened in a window of exactly this size.
-            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                Column(
-                    Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
+        BoxWithConstraints(
+            Modifier
+                .fillMaxSize()
+                .systemBarsPadding()
+                .padding(24.dp),
+        ) {
+            if (maxWidth > maxHeight) {
+                // Landscape car display: left half = clock, pinned apps and all apps;
+                // right half = the map, where a map app is opened in a window of exactly this size.
+                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                    Column(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Clock()
+                        updateBar()
+                        homeBanner()
+                        if (pinned.isNotEmpty()) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                pinned.forEach { tile(it, false, Modifier.weight(1f)) }
+                            }
+                        }
+                        AppGrid(apps, gridState, tile, Modifier.weight(1f).fillMaxWidth())
+                    }
+                    MapPanel(
+                        mapApps = mapApps,
+                        onOpenMap = { app -> mapBounds?.let { viewModel.launchInBounds(app, it) } ?: viewModel.launch(app) },
+                        onOpenDiagnostics = { showDiagnostics = true },
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .onGloballyPositioned { mapBounds = it.boundsInWindow().toAndroidRect() },
+                    )
+                }
+            } else {
+                // Tall / portrait displays: stack everything vertically.
+                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Clock()
                     updateBar()
                     homeBanner()
-                    if (pinned.isNotEmpty()) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                            pinned.forEach { tile(it, false, Modifier.weight(1f)) }
-                        }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        pinned.forEach { tile(it, false, Modifier.weight(1f)) }
                     }
                     AppGrid(apps, gridState, tile, Modifier.weight(1f).fillMaxWidth())
                 }
-                MapPanel(
-                    waze = waze,
-                    onOpenWaze = { app -> mapBounds?.let { viewModel.launchInBounds(app, it) } ?: viewModel.launch(app) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .onGloballyPositioned { mapBounds = it.boundsInWindow().toAndroidRect() },
-                )
             }
-        } else {
-            // Tall / portrait displays: stack everything vertically.
-            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Clock()
-                updateBar()
-                homeBanner()
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    pinned.forEach { tile(it, false, Modifier.weight(1f)) }
-                }
-                AppGrid(apps, gridState, tile, Modifier.weight(1f).fillMaxWidth())
-            }
+        }
+
+        if (showDiagnostics) {
+            BackHandler { showDiagnostics = false }
+            DiagnosticsScreen(
+                mapApps = mapApps,
+                splitCommandSent = splitCommandSent,
+                onTrySplit = viewModel::trySplitScreen,
+                onClose = { showDiagnostics = false },
+            )
         }
     }
 }
