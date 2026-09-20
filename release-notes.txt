@@ -1,1 +1,1 @@
-Báo rõ lý do khi không cập nhật được và thêm nút Kiểm tra kết nối mạng trong Chẩn đoán.
+Bỏ dịch vụ Trợ năng thử nghiệm để Play Protect không chặn cài đặt. Giữ Chẩn đoán và kiểm tra kết nối mạng.

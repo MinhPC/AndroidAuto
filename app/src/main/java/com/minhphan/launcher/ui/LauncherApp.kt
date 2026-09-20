@@ -47,7 +47,6 @@ fun LauncherApp(viewModel: LauncherViewModel) {
     val canPinMore = pinned.size < LauncherViewModel.MAX_FAVORITES
     val gridState = rememberLazyGridState()
     val mapApps by viewModel.mapApps.collectAsStateWithLifecycle()
-    val splitCommandSent by viewModel.splitCommandSent.collectAsStateWithLifecycle()
     val connectivity by viewModel.connectivity.collectAsStateWithLifecycle()
     val connectivityRunning by viewModel.connectivityRunning.collectAsStateWithLifecycle()
     var showDiagnostics by rememberSaveable { mutableStateOf(false) }
@@ -150,11 +149,8 @@ fun LauncherApp(viewModel: LauncherViewModel) {
         if (showDiagnostics) {
             BackHandler { showDiagnostics = false }
             DiagnosticsScreen(
-                mapApps = mapApps,
-                splitCommandSent = splitCommandSent,
                 connectivity = connectivity,
                 connectivityRunning = connectivityRunning,
-                onTrySplit = viewModel::trySplitScreen,
                 onTestConnectivity = viewModel::testConnectivity,
                 onClose = { showDiagnostics = false },
             )

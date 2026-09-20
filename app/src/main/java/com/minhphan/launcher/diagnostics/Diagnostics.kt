@@ -24,9 +24,9 @@ tailrec fun Context.findActivity(): Activity? = when (this) {
 
 /**
  * What this device's firmware offers for showing a map beside the launcher. Read-only and local:
- * nothing is sent anywhere. [splitCommandSent] is the result of the last "try split screen" press.
+ * nothing is sent anywhere.
  */
-fun collectDiagnostics(context: Context, splitCommandSent: Boolean?): List<DiagnosticLine> {
+fun collectDiagnostics(context: Context): List<DiagnosticLine> {
     val pm = context.packageManager
     val metrics = context.resources.displayMetrics
     val activity = context.findActivity()
@@ -58,8 +58,6 @@ fun collectDiagnostics(context: Context, splitCommandSent: Boolean?): List<Diagn
         DiagnosticLine("Bật freeform (cài đặt nhà phát triển)", global("enable_freeform_support")),
         DiagnosticLine("Buộc app đổi kích thước được", global("force_resizable_activities")),
         DiagnosticLine("Launcher đang ở chế độ nhiều cửa sổ", activity?.isInMultiWindowMode?.let(::yesNo) ?: "không rõ"),
-        DiagnosticLine("Dịch vụ Trợ năng chia đôi đã bật", yesNo(SplitScreenService.instance != null)),
-        DiagnosticLine("Lệnh chia đôi lần trước", splitCommandSent?.let { if (it) "đã gửi" else "thất bại (dịch vụ chưa bật)" } ?: "chưa thử"),
         DiagnosticLine("Có GPS", feature("android.hardware.location.gps")),
         DiagnosticLine("Google Play services", version("com.google.android.gms")),
         DiagnosticLine("Google Maps", version("com.google.android.apps.maps")),

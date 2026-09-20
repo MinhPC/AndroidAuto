@@ -30,11 +30,6 @@
     <string name="diagnostics_button">Window diagnostics</string>
     <string name="diagnostics_title">Window diagnostics</string>
     <string name="diagnostics_close">Close</string>
-    <string name="split_hint">How to test split screen: (1) Enable the Car Launcher split-screen accessibility service in the settings page that opens. (2) Tap Try split below: the app opens the map, then sends the Android split-screen command. If the firmware supports it, the map takes one half and the launcher shows in the other. Then reopen Diagnostics and check the line for multi-window mode.</string>
-    <string name="enable_split_service">Enable split-screen accessibility service</string>
-    <string name="try_split_with">Try split with %1$s</string>
-    <string name="split_service_label">Car Launcher split screen</string>
-    <string name="split_service_description">Only used to send the Android split-screen command. It does not read the screen or track what you do.</string>
     <string name="update_error_dns">Could not resolve the server name. Check that the unit has internet</string>
     <string name="update_error_tls">HTTPS security error. Check the unit date and time</string>
     <string name="update_error_timeout">The update server timed out</string>

@@ -1,8 +1,5 @@
 package com.minhphan.launcher.ui
 
-import android.content.ActivityNotFoundException
-import android.content.Intent
-import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
@@ -27,32 +25,27 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.minhphan.launcher.R
-import com.minhphan.launcher.data.AppInfo
 import com.minhphan.launcher.diagnostics.DiagnosticLine
 import com.minhphan.launcher.diagnostics.collectDiagnostics
 
-/** Full-screen report of what the firmware supports, plus buttons to try the standard split-screen. */
+/** Full-screen report of what the firmware supports, plus a step-by-step network test. */
 @Composable
 fun DiagnosticsScreen(
-    mapApps: List<AppInfo>,
-    splitCommandSent: Boolean?,
     connectivity: List<DiagnosticLine>,
     connectivityRunning: Boolean,
-    onTrySplit: (AppInfo) -> Unit,
     onTestConnectivity: () -> Unit,
     onClose: () -> Unit,
 ) {
     val context = LocalContext.current
-    // Recompute whenever we come back (e.g. after enabling the accessibility service or splitting).
+    // Recompute whenever we come back to the screen (e.g. after changing the clock in Settings).
     var refresh by remember { mutableIntStateOf(0) }
     LifecycleResumeEffect(Unit) {
         refresh++
         onPauseOrDispose { }
     }
-    val lines = remember(refresh, splitCommandSent) { collectDiagnostics(context, splitCommandSent) }
+    val lines = remember(refresh) { collectDiagnostics(context) }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
@@ -94,33 +87,6 @@ fun DiagnosticsScreen(
             ) {
                 Text(stringResource(if (connectivityRunning) R.string.testing_connectivity else R.string.test_connectivity))
             }
-            Text(
-                text = stringResource(R.string.split_hint),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
-            )
-            OutlinedButton(
-                onClick = { openAccessibilitySettings(context) },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-            ) {
-                Text(stringResource(R.string.enable_split_service))
-            }
-            mapApps.forEach { app ->
-                Button(
-                    onClick = { onTrySplit(app) },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-                ) {
-                    Text(stringResource(R.string.try_split_with, app.label))
-                }
-            }
         }
-    }
-}
-
-private fun openAccessibilitySettings(context: android.content.Context) {
-    try {
-        context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-    } catch (_: ActivityNotFoundException) {
-        // The firmware has no accessibility settings screen; the report will keep showing "không".
     }
 }
