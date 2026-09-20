@@ -3,7 +3,6 @@ package com.minhphan.launcher
 import android.app.Application
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Rect
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.minhphan.launcher.data.AppInfo
@@ -44,11 +43,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         keys.orEmpty().mapNotNull(byKey::get)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    /** Installed map apps (Google Maps first), read from the launcher's own app list. */
-    val mapApps: StateFlow<List<AppInfo>> = apps
-        .map { list -> MAP_PACKAGES.mapNotNull { pkg -> list.firstOrNull { it.packageName == pkg } } }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-
     private val _connectivity = MutableStateFlow<List<DiagnosticLine>>(emptyList())
 
     /** Lines from the last network test (empty until it has run). */
@@ -81,8 +75,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun checkForUpdate() = updates.check(manual = true)
 
     fun installUpdate(info: UpdateInfo) = updates.install(info)
-
-    fun launchInBounds(app: AppInfo, bounds: Rect) = repository.launchInBounds(app, bounds)
 
     fun testConnectivity() {
         if (_connectivityRunning.value) return
@@ -120,6 +112,5 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     companion object {
         const val MAX_FAVORITES = 4
-        private val MAP_PACKAGES = listOf("com.google.android.apps.maps", "com.waze")
     }
 }

@@ -1,1 +1,1 @@
-Bỏ dịch vụ Trợ năng thử nghiệm để Play Protect không chặn cài đặt. Giữ Chẩn đoán và kiểm tra kết nối mạng.
+Nửa trái màn hình chính hiển thị xe Honda Civic đen chạy trên đường: xe chạy thì đường chuyển động theo tốc độ GPS, xe dừng thì đứng im. Ứng dụng chuyển sang nửa phải.

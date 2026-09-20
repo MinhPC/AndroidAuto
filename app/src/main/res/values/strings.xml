@@ -10,10 +10,6 @@
     <string name="default_home_hint">Nếu nút không phản hồi: Cài đặt → Ứng dụng → Ứng dụng mặc định → Màn hình chính. Hoặc mở cài đặt launcher hiện tại → Mở theo mặc định → Xóa mặc định, rồi bấm Home.</string>
     <string name="set_default_manual">Không mở được cài đặt. Hãy vào Cài đặt → Ứng dụng → Ứng dụng mặc định → Màn hình chính.</string>
     <string name="home_debug_info">Android API %1$d · Launcher hiện tại: %2$s</string>
-    <string name="map_panel_title">Bản đồ</string>
-    <string name="map_panel_hint">Bấm nút bên dưới để mở bản đồ vào khung này. Nếu app mở toàn màn hình thì firmware chưa hỗ trợ cửa sổ nổi. Hãy thử mục Chẩn đoán.</string>
-    <string name="open_map_half">Mở %1$s ở nửa màn hình</string>
-    <string name="map_not_installed">Chưa cài Google Maps hoặc Waze.</string>
     <string name="app_version">Phiên bản %1$s</string>
     <string name="check_update">Kiểm tra cập nhật</string>
     <string name="checking_update">Đang kiểm tra…</string>
@@ -37,4 +33,11 @@
     <string name="update_error_manifest">Tệp thông tin cập nhật không hợp lệ</string>
     <string name="test_connectivity">Kiểm tra kết nối mạng</string>
     <string name="testing_connectivity">Đang kiểm tra…</string>
+    <string name="speed_unit">km/h</string>
+    <string name="drive_moving">Đang chạy</string>
+    <string name="drive_stopped">Đang dừng</string>
+    <string name="drive_searching">Đang tìm tín hiệu GPS…</string>
+    <string name="drive_no_permission">Chưa có quyền vị trí để biết xe đang chạy hay dừng</string>
+    <string name="grant_location">Cấp quyền vị trí</string>
+    <string name="open_app_settings">Mở cài đặt để cấp quyền</string>
 </resources>

@@ -15,6 +15,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.core.content.ContextCompat
@@ -24,7 +26,7 @@ import java.time.format.FormatStyle
 import java.util.Locale
 
 @Composable
-fun Clock(modifier: Modifier = Modifier) {
+fun Clock(modifier: Modifier = Modifier, color: Color = Color.Unspecified, shadow: Shadow? = null) {
     val context = LocalContext.current
     var now by remember { mutableStateOf(LocalDateTime.now()) }
 
@@ -53,11 +55,11 @@ fun Clock(modifier: Modifier = Modifier) {
     Column(modifier) {
         Text(
             text = time,
-            style = MaterialTheme.typography.displayLarge.copy(fontWeight = FontWeight.Light),
+            style = MaterialTheme.typography.displayLarge.copy(fontWeight = FontWeight.Light, color = color, shadow = shadow),
         )
         Text(
             text = date,
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.titleLarge.copy(color = color, shadow = shadow),
         )
     }
 }
