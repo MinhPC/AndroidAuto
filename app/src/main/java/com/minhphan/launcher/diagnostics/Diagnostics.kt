@@ -7,9 +7,14 @@ import android.content.pm.ApplicationInfo
 import android.hardware.display.DisplayManager
 import android.os.Build
 import android.provider.Settings
+import com.minhphan.launcher.BuildConfig
 import com.minhphan.launcher.ui.queryHomeStatus
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 
 data class DiagnosticLine(val label: String, val value: String)
+
+private val CLOCK_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm (xxx)")
 
 tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
@@ -40,6 +45,9 @@ fun collectDiagnostics(context: Context, splitCommandSent: Boolean?): List<Diagn
         DiagnosticLine("Thiết bị", "${Build.MANUFACTURER} ${Build.MODEL} (${Build.DEVICE})"),
         DiagnosticLine("Android", "${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})"),
         DiagnosticLine("Bản firmware", Build.DISPLAY),
+        // A wrong clock is a common reason HTTPS fails on head units.
+        DiagnosticLine("Ngày giờ của đầu", ZonedDateTime.now().format(CLOCK_FORMAT)),
+        DiagnosticLine("Máy chủ cập nhật", BuildConfig.UPDATE_MANIFEST_URL.ifBlank { "chưa cấu hình" }),
         DiagnosticLine("Màn hình", "${metrics.widthPixels}x${metrics.heightPixels} px, ${metrics.densityDpi} dpi"),
         DiagnosticLine("Số màn hình", context.getSystemService(DisplayManager::class.java).displays.size.toString()),
         DiagnosticLine("Launcher gốc", home.otherHomePackage ?: "(đang là Car Launcher)"),

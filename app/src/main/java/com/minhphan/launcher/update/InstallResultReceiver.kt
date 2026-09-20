@@ -7,9 +7,12 @@ import android.content.pm.PackageInstaller
 import androidx.core.content.IntentCompat
 import kotlinx.coroutines.flow.MutableSharedFlow
 
-/** Carries PackageInstaller status codes from the receiver to [UpdateManager]. */
+/** Outcome of a PackageInstaller session; [message] is the system's own explanation, when it gives one. */
+data class InstallResult(val status: Int, val message: String?)
+
+/** Carries PackageInstaller results from the receiver to [UpdateManager]. */
 object InstallEvents {
-    val results = MutableSharedFlow<Int>(extraBufferCapacity = 4)
+    val results = MutableSharedFlow<InstallResult>(extraBufferCapacity = 4)
 }
 
 /** Receives the outcome of a PackageInstaller session started by [UpdateManager]. */
@@ -21,7 +24,7 @@ class InstallResultReceiver : BroadcastReceiver() {
             IntentCompat.getParcelableExtra(intent, Intent.EXTRA_INTENT, Intent::class.java)
                 ?.let { context.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
         } else {
-            InstallEvents.results.tryEmit(status)
+            InstallEvents.results.tryEmit(InstallResult(status, intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)))
         }
     }
 

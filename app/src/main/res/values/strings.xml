@@ -35,4 +35,11 @@
     <string name="try_split_with">Thử chia đôi với %1$s</string>
     <string name="split_service_label">Car Launcher chia đôi màn hình</string>
     <string name="split_service_description">Chỉ dùng để gửi lệnh chia đôi màn hình của Android. Không đọc nội dung màn hình và không theo dõi thao tác của bạn.</string>
+    <string name="update_error_dns">Không phân giải được tên miền. Hãy kiểm tra đầu có mạng không</string>
+    <string name="update_error_tls">Lỗi bảo mật HTTPS. Hãy kiểm tra ngày giờ của đầu</string>
+    <string name="update_error_timeout">Hết thời gian chờ máy chủ cập nhật</string>
+    <string name="update_error_http">Máy chủ cập nhật trả về lỗi</string>
+    <string name="update_error_manifest">Tệp thông tin cập nhật không hợp lệ</string>
+    <string name="test_connectivity">Kiểm tra kết nối mạng</string>
+    <string name="testing_connectivity">Đang kiểm tra…</string>
 </resources>

@@ -35,4 +35,11 @@
     <string name="try_split_with">Try split with %1$s</string>
     <string name="split_service_label">Car Launcher split screen</string>
     <string name="split_service_description">Only used to send the Android split-screen command. It does not read the screen or track what you do.</string>
+    <string name="update_error_dns">Could not resolve the server name. Check that the unit has internet</string>
+    <string name="update_error_tls">HTTPS security error. Check the unit date and time</string>
+    <string name="update_error_timeout">The update server timed out</string>
+    <string name="update_error_http">The update server returned an error</string>
+    <string name="update_error_manifest">The update information file is invalid</string>
+    <string name="test_connectivity">Test network connection</string>
+    <string name="testing_connectivity">Testing…</string>
 </resources>

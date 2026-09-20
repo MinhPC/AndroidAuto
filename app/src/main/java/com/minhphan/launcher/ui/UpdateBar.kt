@@ -76,6 +76,15 @@ fun UpdateBar(
                 }
             }
         }
+        if (state is UpdateState.Failed && state.detail != null) {
+            Text(
+                text = state.detail,
+                style = MaterialTheme.typography.bodySmall,
+                color = muted,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
         if (state is UpdateState.Downloading) {
             LinearProgressIndicator(progress = { state.percent / 100f }, modifier = Modifier.fillMaxWidth())
         }

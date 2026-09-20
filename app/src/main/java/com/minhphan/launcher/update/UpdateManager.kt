@@ -44,12 +44,14 @@ class UpdateManager(context: Context, private val scope: CoroutineScope) {
 
     init {
         scope.launch {
-            InstallEvents.results.collect { status ->
+            InstallEvents.results.collect { result ->
                 val installing = _state.value as? UpdateState.Installing ?: return@collect
-                when (status) {
+                when (result.status) {
                     PackageInstaller.STATUS_SUCCESS -> Unit // the app process is replaced by the new version
                     PackageInstaller.STATUS_FAILURE_ABORTED -> _state.value = UpdateState.Available(installing.info)
-                    else -> _state.value = UpdateState.Failed(R.string.update_install_failed, installing.info)
+                    else -> _state.value = UpdateState.Failed(
+                        R.string.update_install_failed, installing.info, "status ${result.status}: ${result.message.orEmpty()}".take(140),
+                    )
                 }
             }
         }
@@ -69,7 +71,7 @@ class UpdateManager(context: Context, private val scope: CoroutineScope) {
             val info = runCatching { fetchManifest() }
             prefs.edit().putLong(KEY_LAST_CHECK, System.currentTimeMillis()).apply()
             _state.value = when {
-                info.isFailure -> if (manual) UpdateState.Failed(R.string.update_error_network) else UpdateState.Idle
+                info.isFailure -> if (manual) failed(info.exceptionOrNull()!!) else UpdateState.Idle
                 info.getOrThrow().isNewerThan(currentVersionCode) -> UpdateState.Available(info.getOrThrow())
                 manual -> UpdateState.UpToDate
                 else -> UpdateState.Idle
@@ -89,7 +91,7 @@ class UpdateManager(context: Context, private val scope: CoroutineScope) {
         job = scope.launch {
             _state.value = UpdateState.Downloading(info, 0)
             val apk = runCatching { download(info) }.getOrElse {
-                _state.value = UpdateState.Failed(R.string.update_error_network, info)
+                _state.value = failed(it, info)
                 return@launch
             }
             if (!isValidUpdate(apk, info)) {
@@ -98,9 +100,14 @@ class UpdateManager(context: Context, private val scope: CoroutineScope) {
             }
             _state.value = runCatching { withContext(Dispatchers.IO) { commitInstall(apk) } }.fold(
                 onSuccess = { UpdateState.Installing(info) },
-                onFailure = { UpdateState.Failed(R.string.update_install_failed, info) },
+                onFailure = { UpdateState.Failed(R.string.update_install_failed, info, classifyUpdateError(it).detail) },
             )
         }
+    }
+
+    private fun failed(error: Throwable, info: UpdateInfo? = null): UpdateState.Failed {
+        val failure = classifyUpdateError(error)
+        return UpdateState.Failed(failure.messageRes, info, failure.detail)
     }
 
     private fun isBusy() = when (_state.value) {
@@ -111,7 +118,7 @@ class UpdateManager(context: Context, private val scope: CoroutineScope) {
     private suspend fun fetchManifest(): UpdateInfo = withContext(Dispatchers.IO) {
         val conn = open(manifestUrl)
         try {
-            check(conn.responseCode == HttpURLConnection.HTTP_OK) { "HTTP ${conn.responseCode}" }
+            if (conn.responseCode != HttpURLConnection.HTTP_OK) throw HttpStatusException(conn.responseCode)
             parseUpdateManifest(conn.inputStream.bufferedReader().use { it.readText() })
         } finally {
             conn.disconnect()
@@ -123,7 +130,7 @@ class UpdateManager(context: Context, private val scope: CoroutineScope) {
         val file = File(dir, "CarLauncher-${info.versionName}.apk")
         val conn = open(info.apkUrl)
         try {
-            check(conn.responseCode == HttpURLConnection.HTTP_OK) { "HTTP ${conn.responseCode}" }
+            if (conn.responseCode != HttpURLConnection.HTTP_OK) throw HttpStatusException(conn.responseCode)
             val total = conn.contentLengthLong
             conn.inputStream.use { input ->
                 file.outputStream().use { out ->

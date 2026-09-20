@@ -9,7 +9,9 @@ import androidx.lifecycle.viewModelScope
 import com.minhphan.launcher.data.AppInfo
 import com.minhphan.launcher.data.AppRepository
 import com.minhphan.launcher.data.FavoritesStore
+import com.minhphan.launcher.diagnostics.DiagnosticLine
 import com.minhphan.launcher.diagnostics.SplitScreenService
+import com.minhphan.launcher.diagnostics.runConnectivityTest
 import com.minhphan.launcher.update.UpdateInfo
 import com.minhphan.launcher.update.UpdateManager
 import com.minhphan.launcher.update.UpdateState
@@ -54,6 +56,14 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     /** Result of the last "try split screen": true = command sent, false = accessibility service not enabled. */
     val splitCommandSent: StateFlow<Boolean?> = _splitCommandSent
 
+    private val _connectivity = MutableStateFlow<List<DiagnosticLine>>(emptyList())
+
+    /** Lines from the last network test (empty until it has run). */
+    val connectivity: StateFlow<List<DiagnosticLine>> = _connectivity
+
+    private val _connectivityRunning = MutableStateFlow(false)
+    val connectivityRunning: StateFlow<Boolean> = _connectivityRunning
+
     private val _homeEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
     /** Emits each time the Home button is pressed while the launcher is already showing. */
@@ -90,6 +100,15 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             delay(SPLIT_DELAY_MS) // let the app reach the foreground first
             _splitCommandSent.value = SplitScreenService.toggleSplitScreen()
+        }
+    }
+
+    fun testConnectivity() {
+        if (_connectivityRunning.value) return
+        viewModelScope.launch {
+            _connectivityRunning.value = true
+            _connectivity.value = runConnectivityTest()
+            _connectivityRunning.value = false
         }
     }
 

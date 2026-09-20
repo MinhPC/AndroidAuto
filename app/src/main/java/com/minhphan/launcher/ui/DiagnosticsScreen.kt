@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.minhphan.launcher.R
 import com.minhphan.launcher.data.AppInfo
+import com.minhphan.launcher.diagnostics.DiagnosticLine
 import com.minhphan.launcher.diagnostics.collectDiagnostics
 
 /** Full-screen report of what the firmware supports, plus buttons to try the standard split-screen. */
@@ -38,7 +39,10 @@ import com.minhphan.launcher.diagnostics.collectDiagnostics
 fun DiagnosticsScreen(
     mapApps: List<AppInfo>,
     splitCommandSent: Boolean?,
+    connectivity: List<DiagnosticLine>,
+    connectivityRunning: Boolean,
     onTrySplit: (AppInfo) -> Unit,
+    onTestConnectivity: () -> Unit,
     onClose: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -70,7 +74,7 @@ fun DiagnosticsScreen(
             }
 
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(lines) { line ->
+                items(lines + connectivity) { line ->
                     Row(Modifier.fillMaxWidth()) {
                         Text(line.label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(0.5f))
                         Text(
@@ -83,6 +87,13 @@ fun DiagnosticsScreen(
                 }
             }
 
+            Button(
+                onClick = onTestConnectivity,
+                enabled = !connectivityRunning,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+            ) {
+                Text(stringResource(if (connectivityRunning) R.string.testing_connectivity else R.string.test_connectivity))
+            }
             Text(
                 text = stringResource(R.string.split_hint),
                 style = MaterialTheme.typography.bodyMedium,
