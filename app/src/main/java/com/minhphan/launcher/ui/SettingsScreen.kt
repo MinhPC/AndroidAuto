@@ -1,39 +1,42 @@
 package com.minhphan.launcher.ui
 
+import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.Intent
+import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,24 +46,29 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import com.minhphan.launcher.BuildConfig
 import com.minhphan.launcher.LauncherViewModel
 import com.minhphan.launcher.R
 import com.minhphan.launcher.data.AppInfo
 import com.minhphan.launcher.data.LastLocationStore
 import com.minhphan.launcher.data.LauncherSettings
-import com.minhphan.launcher.data.NavigatorChoice
 import com.minhphan.launcher.data.ThemeMode
 import com.minhphan.launcher.data.sunTimes
+import com.minhphan.launcher.obd.AUTO_ADDRESS
+import com.minhphan.launcher.obd.SIMULATED_ADDRESS
+import com.minhphan.launcher.obd.bondedDevices
+import com.minhphan.launcher.update.UpdateState
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-/** Above this width the settings go in two columns: places and look on the left, the dock apps on the right. */
+/** Above this width the settings go in two columns: the groups on the left, the dock apps on the right. */
 private val TwoColumnWidth = 840.dp
 
 /**
- * Everything the user can change: which apps sit in the dock, the home and work addresses with the navigation
- * app, and the day / night look. Opened from the button on the scene; typing is meant for when the car is parked.
+ * Everything the user can change, in cards: the day / night look, the paired OBD adapter, the app version with the
+ * update check and window diagnostics, and which apps sit in the dock. Opened from the dock's settings button.
  */
 @Composable
 fun SettingsScreen(
@@ -68,50 +76,33 @@ fun SettingsScreen(
     apps: List<AppInfo>,
     pinnedKeys: Set<String>,
     viewModel: LauncherViewModel,
+    updateState: UpdateState,
+    bluetooth: BluetoothPermission,
+    onOpenDiagnostics: () -> Unit,
     onClose: () -> Unit,
 ) {
     val canPinMore = pinnedKeys.size < LauncherViewModel.MAX_FAVORITES
-    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .systemBarsPadding()
-                .imePadding()
-                .padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = stringResource(R.string.settings_title),
-                    style = MaterialTheme.typography.headlineMedium,
-                    modifier = Modifier.weight(1f),
-                )
-                OutlinedButton(onClick = onClose, modifier = Modifier.heightIn(min = 56.dp)) {
-                    Text(stringResource(R.string.diagnostics_close))
+    OverlayScreen(title = stringResource(R.string.settings_title), onClose = onClose) {
+        BoxWithConstraints(Modifier.weight(1f)) {
+            val general: @Composable () -> Unit = { GeneralSettings(settings, viewModel, updateState, bluetooth, onOpenDiagnostics) }
+            if (maxWidth >= TwoColumnWidth) {
+                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                    Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) { general() }
+                    LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        dockPicker(apps, pinnedKeys, canPinMore, viewModel::toggleFavorite)
+                    }
                 }
-            }
-            BoxWithConstraints(Modifier.weight(1f)) {
-                val general: @Composable () -> Unit = { GeneralSettings(settings, viewModel) }
-                val picker: LazyListContent = { dockPicker(apps, pinnedKeys, canPinMore, viewModel::toggleFavorite) }
-                if (maxWidth >= TwoColumnWidth) {
-                    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) { general() }
-                        LazyColumn(Modifier.weight(1f)) { picker() }
-                    }
-                } else {
-                    LazyColumn(Modifier.fillMaxSize()) {
-                        item { general() }
-                        picker()
-                    }
+            } else {
+                LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    item { general() }
+                    dockPicker(apps, pinnedKeys, canPinMore, viewModel::toggleFavorite)
                 }
             }
         }
     }
 }
 
-private typealias LazyListContent = androidx.compose.foundation.lazy.LazyListScope.() -> Unit
-
-private fun androidx.compose.foundation.lazy.LazyListScope.dockPicker(
+private fun LazyListScope.dockPicker(
     apps: List<AppInfo>,
     pinnedKeys: Set<String>,
     canPinMore: Boolean,
@@ -121,7 +112,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.dockPicker(
         Text(
             text = stringResource(R.string.settings_dock_title, pinnedKeys.size, LauncherViewModel.MAX_FAVORITES),
             style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.padding(top = 8.dp, bottom = 8.dp),
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.padding(top = 8.dp, bottom = 6.dp, start = 4.dp),
         )
     }
     items(apps, key = { it.key }) { app ->
@@ -131,66 +123,77 @@ private fun androidx.compose.foundation.lazy.LazyListScope.dockPicker(
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = 64.dp)
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(16.dp))
+                .background(if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)
                 .clickable(enabled = enabled) { onToggle(app) }
                 .alpha(if (enabled) 1f else 0.4f)
-                .padding(horizontal = 8.dp),
+                .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Image(bitmap = app.icon, contentDescription = null, modifier = Modifier.size(40.dp))
             Spacer(Modifier.width(16.dp))
-            Text(app.label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            Text(app.label, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
             Checkbox(checked = selected, onCheckedChange = null)
         }
     }
 }
 
 @Composable
-private fun GeneralSettings(settings: LauncherSettings, viewModel: LauncherViewModel) {
+private fun GeneralSettings(
+    settings: LauncherSettings,
+    viewModel: LauncherViewModel,
+    updateState: UpdateState,
+    bluetooth: BluetoothPermission,
+    onOpenDiagnostics: () -> Unit,
+) {
     val context = LocalContext.current
-    var home by rememberSaveable { mutableStateOf(settings.homeAddress) }
-    var work by rememberSaveable { mutableStateOf(settings.workAddress) }
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        SettingsCard(R.string.settings_theme_title) {
+            RadioRow(settings.theme == ThemeMode.Auto, stringResource(R.string.theme_auto)) { viewModel.setTheme(ThemeMode.Auto) }
+            if (settings.theme == ThemeMode.Auto) Hint(remember(settings.theme) { sunSummary(context) })
+            RadioRow(settings.theme == ThemeMode.System, stringResource(R.string.theme_system)) { viewModel.setTheme(ThemeMode.System) }
+            RadioRow(settings.theme == ThemeMode.Light, stringResource(R.string.theme_light)) { viewModel.setTheme(ThemeMode.Light) }
+            RadioRow(settings.theme == ThemeMode.Dark, stringResource(R.string.theme_dark)) { viewModel.setTheme(ThemeMode.Dark) }
+            Hint(stringResource(R.string.settings_park_hint))
+        }
 
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SectionTitle(R.string.settings_places_title)
-        OutlinedTextField(
-            value = home,
-            onValueChange = { home = it; viewModel.setHomeAddress(it) },
-            label = { Text(stringResource(R.string.place_home_label)) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedTextField(
-            value = work,
-            onValueChange = { work = it; viewModel.setWorkAddress(it) },
-            label = { Text(stringResource(R.string.place_work_label)) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Hint(stringResource(R.string.place_hint))
+        SettingsCard(R.string.settings_obd_title) {
+            ObdDeviceSettings(settings.obdAddress, bluetooth, viewModel::setObdAddress)
+        }
 
-        SectionTitle(R.string.navigator_title)
-        RadioRow(settings.navigator == NavigatorChoice.Auto, stringResource(R.string.navigator_auto)) { viewModel.setNavigator(NavigatorChoice.Auto) }
-        RadioRow(settings.navigator == NavigatorChoice.Waze, stringResource(R.string.navigator_waze)) { viewModel.setNavigator(NavigatorChoice.Waze) }
-        RadioRow(settings.navigator == NavigatorChoice.GoogleMaps, stringResource(R.string.navigator_maps)) { viewModel.setNavigator(NavigatorChoice.GoogleMaps) }
-
-        SectionTitle(R.string.settings_theme_title)
-        RadioRow(settings.theme == ThemeMode.Auto, stringResource(R.string.theme_auto)) { viewModel.setTheme(ThemeMode.Auto) }
-        if (settings.theme == ThemeMode.Auto) Hint(remember(settings.theme) { sunSummary(context) })
-        RadioRow(settings.theme == ThemeMode.System, stringResource(R.string.theme_system)) { viewModel.setTheme(ThemeMode.System) }
-        RadioRow(settings.theme == ThemeMode.Light, stringResource(R.string.theme_light)) { viewModel.setTheme(ThemeMode.Light) }
-        RadioRow(settings.theme == ThemeMode.Dark, stringResource(R.string.theme_dark)) { viewModel.setTheme(ThemeMode.Dark) }
-        Hint(stringResource(R.string.settings_park_hint))
+        SettingsCard(R.string.settings_about_title) {
+            UpdateBar(
+                versionName = viewModel.versionName,
+                state = updateState,
+                onCheck = viewModel::checkForUpdate,
+                onInstall = viewModel::installUpdate,
+            )
+            ActionButton(stringResource(R.string.diagnostics_button), onOpenDiagnostics)
+        }
     }
 }
 
+/** A titled group of settings on a rounded card. */
 @Composable
-private fun SectionTitle(text: Int) {
-    Text(
-        text = stringResource(text),
-        style = MaterialTheme.typography.titleLarge,
-        modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
-    )
+private fun SettingsCard(title: Int, content: @Composable ColumnScope.() -> Unit) {
+    val shape = RoundedCornerShape(24.dp)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            text = stringResource(title),
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(bottom = 6.dp),
+        )
+        content()
+    }
 }
 
 @Composable
@@ -198,22 +201,71 @@ private fun Hint(text: String) {
     Text(
         text = text,
         style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
     )
 }
 
+/** A wide button for an action inside a card. */
+@Composable
+private fun ActionButton(label: String, onClick: () -> Unit) {
+    FilledTonalButton(onClick = onClick, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
+        Text(label, style = MaterialTheme.typography.titleMedium)
+    }
+}
+
+/** A choice; the picked one is shaded so the current setting reads at a glance. */
 @Composable
 private fun RadioRow(selected: Boolean, label: String, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
             .heightIn(min = 56.dp)
-            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick),
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+            .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         RadioButton(selected = selected, onClick = null)
         Spacer(Modifier.width(12.dp))
-        Text(label, style = MaterialTheme.typography.titleMedium)
+        Text(label, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+    }
+}
+
+/** Which paired Bluetooth device is the OBD adapter, with the way to pair one and to allow Bluetooth. */
+@Composable
+private fun ObdDeviceSettings(address: String, bluetooth: BluetoothPermission, onSelect: (String) -> Unit) {
+    val context = LocalContext.current
+    // Devices paired while Settings is open show up when the user comes back from Android's Bluetooth screen.
+    var refresh by remember { mutableIntStateOf(0) }
+    LifecycleResumeEffect(Unit) {
+        refresh++
+        onPauseOrDispose { }
+    }
+    val devices = remember(refresh, bluetooth.granted) { bondedDevices(context) }
+
+    Hint(stringResource(R.string.obd_pair_hint))
+    if (!bluetooth.granted) {
+        ActionButton(stringResource(R.string.obd_grant), bluetooth.request)
+    } else {
+        RadioRow(address == AUTO_ADDRESS, stringResource(R.string.obd_device_auto)) { onSelect(AUTO_ADDRESS) }
+        devices.forEach { device ->
+            RadioRow(address == device.address, "${device.name}  (${device.address})") { onSelect(device.address) }
+        }
+        if (devices.isEmpty()) Hint(stringResource(R.string.obd_no_paired))
+        if (BuildConfig.DEBUG) {
+            RadioRow(address == SIMULATED_ADDRESS, stringResource(R.string.obd_device_simulated)) { onSelect(SIMULATED_ADDRESS) }
+        }
+    }
+    ActionButton(stringResource(R.string.obd_open_bluetooth)) { openBluetoothSettings(context) }
+}
+
+private fun openBluetoothSettings(context: Context) {
+    try {
+        context.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    } catch (_: ActivityNotFoundException) {
+        Toast.makeText(context, R.string.obd_bluetooth_settings_missing, Toast.LENGTH_LONG).show()
     }
 }
 

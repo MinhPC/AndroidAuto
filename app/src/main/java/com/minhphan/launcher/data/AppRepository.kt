@@ -1,10 +1,7 @@
 package com.minhphan.launcher.data
 
-import android.app.ActivityOptions
 import android.content.Context
-import android.content.Intent
 import android.content.pm.LauncherApps
-import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
 import android.os.UserHandle
@@ -43,15 +40,25 @@ class AppRepository(context: Context) {
         val collator = Collator.getInstance()
         userManager.userProfiles
             .flatMap { user ->
-                launcherApps.getActivityList(null, user).map { info ->
-                    val component = info.componentName
-                    AppInfo(
-                        key = "${component.flattenToShortString()}@${userManager.getSerialNumberForUser(user)}",
-                        label = info.label.toString(),
-                        component = component,
-                        user = user,
-                        icon = info.getIcon(0).toBitmap(iconSizePx, iconSizePx).asImageBitmap(),
-                    )
+                // One broken profile or app icon must not take the whole list, and with it the launcher, down.
+                val activities = try {
+                    launcherApps.getActivityList(null, user)
+                } catch (_: RuntimeException) {
+                    emptyList()
+                }
+                activities.mapNotNull { info ->
+                    try {
+                        val component = info.componentName
+                        AppInfo(
+                            key = "${component.flattenToShortString()}@${userManager.getSerialNumberForUser(user)}",
+                            label = info.label.toString(),
+                            component = component,
+                            user = user,
+                            icon = info.getIcon(0).toBitmap(iconSizePx, iconSizePx).asImageBitmap(),
+                        )
+                    } catch (_: RuntimeException) {
+                        null
+                    }
                 }
             }
             .filter { it.packageName != context.packageName }
@@ -62,29 +69,11 @@ class AppRepository(context: Context) {
         runCatching { launcherApps.startMainActivity(app.component, app.user, null, null) }
     }
 
-    /**
-     * Opens [app] in a window of [bounds] (screen pixels) placed beside the launcher. Whether the bounds
-     * are honoured depends on the firmware supporting freeform / split-screen windows; otherwise the app
-     * simply opens full screen, exactly like [launch].
-     */
-    fun launchInBounds(app: AppInfo, bounds: Rect) {
-        val intent = Intent(Intent.ACTION_MAIN)
-            .addCategory(Intent.CATEGORY_LAUNCHER)
-            .setComponent(app.component)
-            .addFlags(
-                Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED or
-                    Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT,
-            )
-        val options = ActivityOptions.makeBasic().setLaunchBounds(bounds)
-        runCatching { context.startActivity(intent, options.toBundle()) }.onFailure { launch(app) }
-    }
-
     fun openAppInfo(app: AppInfo) {
         runCatching { launcherApps.startAppDetailsActivity(app.component, app.user, null, null) }
     }
 
     private companion object {
-        const val ICON_SIZE_DP = 72
+        const val ICON_SIZE_DP = 64 // the biggest an icon is ever shown
     }
 }

@@ -16,13 +16,10 @@ enum class ThemeMode {
 }
 
 data class LauncherSettings(
-    val homeAddress: String = "",
-    val workAddress: String = "",
-    val navigator: NavigatorChoice = NavigatorChoice.Auto,
     val theme: ThemeMode = ThemeMode.Auto,
-) {
-    fun addressOf(place: Place) = if (place == Place.Home) homeAddress else workAddress
-}
+    /** Bluetooth address of the OBD adapter; empty picks a paired one by its name. */
+    val obdAddress: String = "",
+)
 
 /** Persists [LauncherSettings] next to the dock apps in the "launcher" preferences. */
 class SettingsStore(context: Context) {
@@ -30,38 +27,24 @@ class SettingsStore(context: Context) {
     private val _settings = MutableStateFlow(read())
     val settings: StateFlow<LauncherSettings> = _settings
 
-    fun setHomeAddress(value: String) {
-        prefs.edit().putString(KEY_HOME, value).apply()
-        _settings.value = _settings.value.copy(homeAddress = value)
-    }
-
-    fun setWorkAddress(value: String) {
-        prefs.edit().putString(KEY_WORK, value).apply()
-        _settings.value = _settings.value.copy(workAddress = value)
-    }
-
-    fun setNavigator(value: NavigatorChoice) {
-        prefs.edit().putString(KEY_NAVIGATOR, value.name).apply()
-        _settings.value = _settings.value.copy(navigator = value)
-    }
-
     fun setTheme(value: ThemeMode) {
         prefs.edit().putString(KEY_THEME, value.name).apply()
         _settings.value = _settings.value.copy(theme = value)
     }
 
+    fun setObdAddress(value: String) {
+        prefs.edit().putString(KEY_OBD, value).apply()
+        _settings.value = _settings.value.copy(obdAddress = value)
+    }
+
     private fun read() = LauncherSettings(
-        homeAddress = prefs.getString(KEY_HOME, "").orEmpty(),
-        workAddress = prefs.getString(KEY_WORK, "").orEmpty(),
-        navigator = enumOrDefault(prefs.getString(KEY_NAVIGATOR, null), NavigatorChoice.Auto),
         theme = enumOrDefault(prefs.getString(KEY_THEME, null), ThemeMode.Auto),
+        obdAddress = prefs.getString(KEY_OBD, "").orEmpty(),
     )
 
     private companion object {
-        const val KEY_HOME = "home_address"
-        const val KEY_WORK = "work_address"
-        const val KEY_NAVIGATOR = "navigator"
         const val KEY_THEME = "theme_mode"
+        const val KEY_OBD = "obd_address"
     }
 }
 

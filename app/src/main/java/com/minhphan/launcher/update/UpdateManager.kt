@@ -201,8 +201,18 @@ class UpdateManager(context: Context, private val scope: CoroutineScope) {
         }
     }
 
-    private fun sha256(file: File): String =
-        MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { "%02x".format(it) }
+    private fun sha256(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val n = input.read(buffer)
+                if (n < 0) break
+                digest.update(buffer, 0, n)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
 
     private companion object {
         const val KEY_LAST_CHECK = "last_check"

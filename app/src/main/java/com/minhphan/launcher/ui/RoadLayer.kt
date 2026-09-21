@@ -1,6 +1,6 @@
 package com.minhphan.launcher.ui
 
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -10,6 +10,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -102,44 +103,53 @@ fun RoadLayer(speedKmh: () -> Float, active: Boolean, dark: Boolean, modifier: M
         }
     }
 
-    Canvas(modifier) {
-        // Reading `scroll` here (not in composition) means each frame only redraws, it does not recompose.
-        val offset = scroll
-        val g = SceneGeometry(size.width, size.height)
-        drawImage(
-            photo,
-            dstOffset = IntOffset(g.left.toInt(), g.top.toInt()),
-            dstSize = IntSize((IMAGE_WIDTH * g.scale).toInt() + 1, (IMAGE_HEIGHT * g.scale).toInt() + 1),
-            filterQuality = FilterQuality.High,
-        )
+    // The geometry, shades and path are built once per size (and per `dark`) and reused every frame, so the
+    // animation allocates nothing: a head unit that garbage-collects during the animation would stutter.
+    Spacer(
+        modifier.drawWithCache {
+            val g = SceneGeometry(size.width, size.height)
+            val photoOffset = IntOffset(g.left.toInt(), g.top.toInt())
+            val photoSize = IntSize((IMAGE_WIDTH * g.scale).toInt() + 1, (IMAGE_HEIGHT * g.scale).toInt() + 1)
+            // Darker for the night, and soft shades at the top and bottom so the text reads on any photo.
+            val topShade = Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.35f), Color.Transparent), startY = 0f, endY = size.height * 0.4f)
+            val bottomShade = Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.35f)), startY = size.height * 0.8f, endY = size.height)
+            val dash = Path()
 
-        // The dash pattern moves towards the viewer: every dash sits at n * period minus the scroll.
-        // Worn paint: not pure white. (A fainter, wider copy under each dash used to soften the edges, but it
-        // showed as a ghost outline around every dash, so the dashes are drawn once, with anti-aliased edges.)
-        val core = Color(0xFFF0F0EA).copy(alpha = 0.80f)
-        var n = 0
-        while (true) {
-            val start = n * DASH_PERIOD - offset
-            if (start >= Z_FAR) break
-            val z0 = max(start, Z_NEAR)
-            val z1 = start + DASH_LENGTH
-            if (z1 > Z_NEAR) {
-                for (side in floatArrayOf(-LANE_LINE_OFFSET, LANE_LINE_OFFSET)) {
-                    drawPath(dash(g, side, z0, z1), core)
+            onDrawBehind {
+                // Reading `scroll` here (not in composition) means each frame only redraws, it does not recompose.
+                val offset = scroll
+                drawImage(photo, dstOffset = photoOffset, dstSize = photoSize, filterQuality = FilterQuality.High)
+
+                // The dash pattern moves towards the viewer: every dash sits at n * period minus the scroll.
+                // Worn paint: not pure white. (A fainter, wider copy under each dash used to soften the edges, but it
+                // showed as a ghost outline around every dash, so the dashes are drawn once, with anti-aliased edges.)
+                var n = 0
+                while (true) {
+                    val start = n * DASH_PERIOD - offset
+                    if (start >= Z_FAR) break
+                    val z0 = max(start, Z_NEAR)
+                    val z1 = start + DASH_LENGTH
+                    if (z1 > Z_NEAR) {
+                        dash.rewind()
+                        addDash(dash, g, -LANE_LINE_OFFSET, z0, z1)
+                        addDash(dash, g, LANE_LINE_OFFSET, z0, z1)
+                        drawPath(dash, DashColor)
+                    }
+                    n++
                 }
-            }
-            n++
-        }
 
-        // Darker for the night, and soft shades at the top and bottom so the text reads on any photo.
-        if (dark) drawRect(NightTint, blendMode = BlendMode.Modulate)
-        drawRect(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.35f), Color.Transparent), startY = 0f, endY = size.height * 0.4f))
-        drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.35f)), startY = size.height * 0.8f, endY = size.height))
-    }
+                if (dark) drawRect(NightTint, blendMode = BlendMode.Modulate)
+                drawRect(topShade)
+                drawRect(bottomShade)
+            }
+        },
+    )
 }
 
-/** One painted dash between depths [z0] and [z1] (z0 < z1) on the lane line at [side]; it narrows with distance. */
-private fun dash(g: SceneGeometry, side: Float, z0: Float, z1: Float) = Path().apply {
+private val DashColor = Color(0xFFF0F0EA).copy(alpha = 0.80f)
+
+/** Adds one painted dash between depths [z0] and [z1] (z0 < z1) on the lane line at [side]; it narrows with distance. */
+private fun addDash(path: Path, g: SceneGeometry, side: Float, z0: Float, z1: Float) = path.apply {
     val half0 = LINE_WIDTH_PER_PX * (g.height - g.vanishY) / z0 / 2f
     val half1 = LINE_WIDTH_PER_PX * (g.height - g.vanishY) / z1 / 2f
     moveTo(g.xAt(side, z0) - half0, g.yAt(z0))

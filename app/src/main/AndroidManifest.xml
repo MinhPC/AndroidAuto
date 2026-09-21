@@ -8,6 +8,12 @@
     <uses-feature
         android:name="android.hardware.location.gps"
         android:required="false" />
+    <!-- Reads the car's data from a paired OBD-II adapter. Android 12+ asks for the run-time permission. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-feature
+        android:name="android.hardware.bluetooth"
+        android:required="false" />
     <!-- In-app updates: hands the downloaded APK to the system installer. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 

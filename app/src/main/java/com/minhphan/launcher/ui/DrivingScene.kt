@@ -64,10 +64,11 @@ private val OverlayShadow = Shadow(color = Color.Black.copy(alpha = 0.6f), offse
  * The car seen from behind on a mountain road, with the clock and date over it. The road streams
  * towards the viewer at the GPS speed while the car is moving; when it is stopped everything stands still, brake
  * lights on. A dot in the corner is green while the GPS has a fix and red while it has none. Needs the
- * location permission, which it asks for once on first use.
+ * location permission, which it asks for once on first use. While a full-screen page is [covered] over it the road
+ * stops drawing, since nobody can see it and a moving car would otherwise animate every frame for nothing.
  */
 @Composable
-fun DrivingScene(modifier: Modifier = Modifier) {
+fun DrivingScene(modifier: Modifier = Modifier, covered: Boolean = false) {
     val context = LocalContext.current
     var granted by remember { mutableStateOf(hasLocationPermission(context)) }
     var asked by rememberSaveable { mutableStateOf(false) }
@@ -111,7 +112,7 @@ fun DrivingScene(modifier: Modifier = Modifier) {
         val textColor = Color.White
         val softColor = Color.White.copy(alpha = 0.75f)
 
-        RoadLayer(speedKmh = { roadSpeed }, active = roadSpeed > 0.2f, dark = dark, modifier = Modifier.fillMaxSize())
+        RoadLayer(speedKmh = { roadSpeed }, active = roadSpeed > 0.2f && !covered, dark = dark, modifier = Modifier.fillMaxSize())
         AudiCarLayer(braking = !moving, dark = dark, modifier = Modifier.fillMaxSize())
 
         // The clock and date, centred at the top.

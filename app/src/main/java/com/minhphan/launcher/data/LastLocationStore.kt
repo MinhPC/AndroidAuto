@@ -3,6 +3,14 @@ package com.minhphan.launcher.data
 import android.annotation.SuppressLint
 import android.content.Context
 import android.location.LocationManager
+import kotlin.math.abs
+
+/** About 11 km: sunrise and sunset move by well under a minute over that distance, so a closer position is not worth a write. */
+private const val SAVE_MOVE_DEGREES = 0.1
+
+/** Whether [to] is far enough from the saved position [from] to be saved over it. */
+internal fun movedEnoughToSave(from: Coordinates, to: Coordinates): Boolean =
+    abs(from.latitude - to.latitude) >= SAVE_MOVE_DEGREES || abs(from.longitude - to.longitude) >= SAVE_MOVE_DEGREES
 
 /**
  * The car's last known position, for the sunrise and sunset that decide day or night. It is read from the
@@ -25,11 +33,19 @@ class LastLocationStore(context: Context) {
                 null
             }
         }
+        val saved = saved()
         if (fix != null) {
             val coordinates = Coordinates(fix.latitude, fix.longitude)
-            prefs.edit().putString(KEY_LAT, coordinates.latitude.toString()).putString(KEY_LON, coordinates.longitude.toString()).apply()
+            // Read once a minute while driving: rewriting the file every time would wear the head unit's flash.
+            if (saved == null || movedEnoughToSave(saved, coordinates)) {
+                prefs.edit().putString(KEY_LAT, coordinates.latitude.toString()).putString(KEY_LON, coordinates.longitude.toString()).apply()
+            }
             return coordinates
         }
+        return saved
+    }
+
+    private fun saved(): Coordinates? {
         val lat = prefs.getString(KEY_LAT, null)?.toDoubleOrNull() ?: return null
         val lon = prefs.getString(KEY_LON, null)?.toDoubleOrNull() ?: return null
         return Coordinates(lat, lon)

@@ -21,7 +21,7 @@ import com.minhphan.launcher.R
 import com.minhphan.launcher.update.UpdateInfo
 import com.minhphan.launcher.update.UpdateState
 
-/** One row under the clock: the installed version on the left, update status / action on the right. */
+/** One row in the settings: the installed version on the left, update status / action on the right. */
 @Composable
 fun UpdateBar(
     versionName: String,
