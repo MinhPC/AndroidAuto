@@ -55,10 +55,11 @@ async def test_the_client_reads_the_sample_car(mock_server):
         assert trip.ongoing and trip.distance_km >= 15
 
         documents = car.documents()
-        sums = await client.sum_range(f"users/{UID}", "days", "2026-01-01", "2026-12-31", ["distanceKm", "trips"])
+        days = await client.documents_between(f"users/{UID}", "days", "2026-01-01", "2026-12-31", ["distanceKm", "trips"])
         year = [f for path, f in documents.items() if "/days/2026-" in path]
-        assert sums["trips"] == sum(day["trips"] for day in year)
-        assert abs(sums["distanceKm"] - sum(day["distanceKm"] for day in year)) < 0.01
+        assert sum(day["trips"] for day in days) == sum(day["trips"] for day in year)
+        assert abs(sum(day["distanceKm"] for day in days) - sum(day["distanceKm"] for day in year)) < 0.01
+        assert all(set(day) == {"_id", "distanceKm", "trips"} for day in days)
 
         assert await client.get_document(f"users/{UID}/days/1999-01-01") is None
 
@@ -75,7 +76,7 @@ async def test_the_mock_says_so_when_it_is_asked_for_more_than_it_knows(mock_ser
     async with aiohttp.ClientSession() as session:
         client = FirestoreClient(session, service_account(base))
         with pytest.raises(Exception, match="does not support"):
-            await client.run_query(f"users/{UID}", {"from": [{"collectionId": "trips"}], "where": {}})
+            await client.run_query(f"users/{UID}", {"from": [{"collectionId": "trips"}], "offset": 3})
 
 
 @pytest.mark.parametrize(("scenario", "driving"), [("driving", "on"), ("parked", "off")])

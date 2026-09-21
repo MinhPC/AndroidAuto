@@ -11,6 +11,7 @@ import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.Source
 import com.minhphan.cloud.CloudAccount
 import com.minhphan.trip.LiveStatus
+import com.minhphan.trip.Refuel
 import com.minhphan.trip.Schema
 import com.minhphan.trip.TripEvent
 import com.minhphan.trip.toMap
@@ -60,6 +61,13 @@ class TripUploader(context: Context, private val account: CloudAccount, private 
                 is TripEvent.Live -> user.collection(Schema.LIVE).document(Schema.LIVE_DOC).write(event.status.toMap())
             }
         }
+    }
+
+    /** Sends a fill-up. Firestore keeps it if there is no connection and sends it later; nothing is sent while nobody is signed in. */
+    fun saveRefuel(refuel: Refuel) {
+        val db = db ?: return
+        val uid = account.uid ?: return
+        db.collection(Schema.USERS).document(uid).collection(Schema.REFUELS).document(refuel.id).write(refuel.toMap())
     }
 
     /**

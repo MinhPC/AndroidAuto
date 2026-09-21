@@ -61,29 +61,16 @@ def _children(documents: dict[str, dict[str, Any]], parent: str, collection: str
 
 
 def _run_query(documents: dict[str, dict[str, Any]], parent: str, query: dict[str, Any]) -> web.Response:
-    unsupported = set(query) - {"from", "orderBy", "limit"}
+    unsupported = set(query) - {"from", "orderBy", "limit", "where", "select"}
     if unsupported:
         return _error(400, f"mock does not support {sorted(unsupported)} in a query")
     collection = query["from"][0]["collectionId"]
-    found = list(_children(documents, parent, collection).items())
-    for order in reversed(query.get("orderBy", [])):
-        field = order["field"]["fieldPath"]
-        found.sort(key=lambda item: item[1].get(field, 0), reverse=order.get("direction") == "DESCENDING")
-    if "limit" in query:
-        found = found[: query["limit"]]
-    answer = [{"document": document(path, fields), "readTime": "2026-01-01T00:00:00Z"} for path, fields in found]
-    return web.json_response(answer or [{"readTime": "2026-01-01T00:00:00Z"}])
-
-
-def _run_aggregation(documents: dict[str, dict[str, Any]], parent: str, query: dict[str, Any]) -> web.Response:
-    structured = query["structuredAggregationQuery"]["structuredQuery"]
-    collection = structured["from"][0]["collectionId"]
     root = f"projects/{MOCK_PROJECT}/databases/(default)/documents/"
     low, high = "", "￿"
-    for filter_ in structured.get("where", {}).get("compositeFilter", {}).get("filters", []):
+    for filter_ in query.get("where", {}).get("compositeFilter", {}).get("filters", []):
         field = filter_["fieldFilter"]
         if field["field"]["fieldPath"] != "__name__":
-            return _error(400, "mock only filters aggregations on __name__")
+            return _error(400, "mock only filters on __name__")
         name = field["value"]["referenceValue"].removeprefix(root)
         if field["op"] == "GREATER_THAN_OR_EQUAL":
             low = name
@@ -91,15 +78,17 @@ def _run_aggregation(documents: dict[str, dict[str, Any]], parent: str, query: d
             high = name
         else:
             return _error(400, f"mock does not support {field['op']}")
-    matching = [fields for path, fields in _children(documents, parent, collection).items() if low <= path <= high]
-
-    result: dict[str, Any] = {}
-    for aggregation in query["structuredAggregationQuery"]["aggregations"]:
-        name = aggregation["sum"]["field"]["fieldPath"]
-        values = [fields[name] for fields in matching if name in fields]
-        total = sum(values)
-        result[aggregation["alias"]] = encode(total if any(isinstance(v, float) for v in values) else int(total))
-    return web.json_response([{"result": {"aggregateFields": result}, "readTime": "2026-01-01T00:00:00Z"}])
+    found = [(path, fields) for path, fields in _children(documents, parent, collection).items() if low <= path <= high]
+    for order in reversed(query.get("orderBy", [])):
+        field = order["field"]["fieldPath"]
+        found.sort(key=lambda item: item[1].get(field, 0), reverse=order.get("direction") == "DESCENDING")
+    if "limit" in query:
+        found = found[: query["limit"]]
+    if "select" in query:
+        wanted = {item["fieldPath"] for item in query["select"]["fields"]}
+        found = [(path, {k: v for k, v in fields.items() if k in wanted}) for path, fields in found]
+    answer = [{"document": document(path, fields), "readTime": "2026-01-01T00:00:00Z"} for path, fields in found]
+    return web.json_response(answer or [{"readTime": "2026-01-01T00:00:00Z"}])
 
 
 def make_app(car: SampleCar, *, log: Callable[[str], None] = lambda line: None) -> web.Application:
@@ -128,8 +117,6 @@ def make_app(car: SampleCar, *, log: Callable[[str], None] = lambda line: None) 
         log(f"POST {tail}")
         if method == "runQuery":
             return _run_query(documents, parent, body["structuredQuery"])
-        if method == "runAggregationQuery":
-            return _run_aggregation(documents, parent, body)
         return _error(400, f"mock does not know {method}")
 
     docs = f"/v1/projects/{{project}}/databases/(default)/documents/{{tail:.+}}"

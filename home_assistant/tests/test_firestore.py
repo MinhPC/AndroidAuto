@@ -87,6 +87,17 @@ async def test_refusals_are_told_apart(hass, aioclient_mock, service_account, st
         await make_client(hass, service_account).get_document(f"users/{UID}/live/car")
 
 
+async def test_a_query_error_arrives_as_a_list_and_its_reason_is_kept(hass, aioclient_mock, service_account):
+    aioclient_mock.post(TOKEN_URI, json=TOKEN_OK)
+    aioclient_mock.post(
+        f"{DOCS}/users/{UID}:runQuery",
+        status=400,
+        json=[{"error": {"code": 400, "message": "The query requires an index."}}],
+    )
+    with pytest.raises(FirestoreError, match="requires an index"):
+        await make_client(hass, service_account).run_query(f"users/{UID}", {"from": [{"collectionId": "trips"}]})
+
+
 async def test_a_refused_token_is_renewed_once_and_then_it_is_an_auth_error(hass, aioclient_mock, service_account):
     aioclient_mock.post(TOKEN_URI, json=TOKEN_OK)
     aioclient_mock.get(LIVE, status=401, json={"error": {"message": "expired"}})
@@ -129,31 +140,27 @@ async def test_run_query_returns_the_documents_and_skips_the_empty_answer(hass, 
     assert aioclient_mock.mock_calls[-1][2] == {"structuredQuery": query}
 
 
-async def test_sum_range_asks_for_one_aggregation_over_the_id_range(hass, aioclient_mock, service_account):
+async def test_documents_between_asks_for_the_id_range_and_only_the_fields_wanted(hass, aioclient_mock, service_account):
     aioclient_mock.post(TOKEN_URI, json=TOKEN_OK)
     aioclient_mock.post(
-        f"{DOCS}/users/{UID}:runAggregationQuery",
+        f"{DOCS}/users/{UID}:runQuery",
         json=[
-            {
-                "result": {
-                    "aggregateFields": {
-                        "distanceKm": {"doubleValue": 47.5},
-                        "trips": {"integerValue": "4"},
-                        "movingSeconds": {"integerValue": "5700"},
-                    }
-                },
-                "readTime": "t",
-            }
+            {"document": {"name": "x/days/2026-09-21", **fields(distanceKm=10.5, trips=2)}, "readTime": "t"},
+            {"document": {"name": "x/days/2026-09-22", **fields(distanceKm=5.0, trips=1)}, "readTime": "t"},
         ],
     )
-    sums = await make_client(hass, service_account).sum_range(
-        f"users/{UID}", "days", "2026-09-21", "2026-09-27", ["distanceKm", "trips", "movingSeconds"]
+    days = await make_client(hass, service_account).documents_between(
+        f"users/{UID}", "days", "2026-09-21", "2026-09-27", ["distanceKm", "trips"]
     )
 
-    assert sums == {"distanceKm": 47.5, "trips": 4.0, "movingSeconds": 5700.0}
-    body = aioclient_mock.mock_calls[-1][2]["structuredAggregationQuery"]
-    assert [a["alias"] for a in body["aggregations"]] == ["distanceKm", "trips", "movingSeconds"]
-    first, last = body["structuredQuery"]["where"]["compositeFilter"]["filters"]
+    assert days == [
+        {"distanceKm": 10.5, "trips": 2, "_id": "2026-09-21"},
+        {"distanceKm": 5.0, "trips": 1, "_id": "2026-09-22"},
+    ]
+    query = aioclient_mock.mock_calls[-1][2]["structuredQuery"]
+    assert query["from"] == [{"collectionId": "days"}]
+    assert query["select"] == {"fields": [{"fieldPath": "distanceKm"}, {"fieldPath": "trips"}]}
+    first, last = query["where"]["compositeFilter"]["filters"]
     prefix = f"projects/{PROJECT}/databases/(default)/documents/users/{UID}/days/"
     assert first["fieldFilter"]["op"] == "GREATER_THAN_OR_EQUAL"
     assert first["fieldFilter"]["value"]["referenceValue"] == prefix + "2026-09-21"
@@ -161,11 +168,10 @@ async def test_sum_range_asks_for_one_aggregation_over_the_id_range(hass, aiocli
     assert last["fieldFilter"]["value"]["referenceValue"] == prefix + "2026-09-27"
 
 
-async def test_sum_range_with_no_days_is_zero(hass, aioclient_mock, service_account):
+async def test_documents_between_with_no_days_is_empty(hass, aioclient_mock, service_account):
     aioclient_mock.post(TOKEN_URI, json=TOKEN_OK)
-    aioclient_mock.post(f"{DOCS}/users/{UID}:runAggregationQuery", json=[{"result": {"aggregateFields": {}}}])
-    sums = await make_client(hass, service_account).sum_range(f"users/{UID}", "days", "a", "b", ["distanceKm"])
-    assert sums == {"distanceKm": 0.0}
+    aioclient_mock.post(f"{DOCS}/users/{UID}:runQuery", json=[{"readTime": "t"}])
+    assert await make_client(hass, service_account).documents_between(f"users/{UID}", "days", "a", "b", ["x"]) == []
 
 
 async def test_an_html_error_page_is_an_error_not_a_crash(hass, aioclient_mock, service_account):

@@ -62,7 +62,7 @@ private val INIT_COMMANDS = listOf("ATE0", "ATL0", "ATS0", "ATH0", "ATAT1", "ATS
 private val FAST_PIDS = listOf(Pid.Rpm, Pid.Speed)
 
 /** One of these is asked per round, in turn. */
-private val SLOW_PIDS = listOf(Pid.Coolant, Pid.Load, Pid.Throttle, Pid.Fuel, Pid.Oil)
+private val SLOW_PIDS = listOf(Pid.Coolant, Pid.Load, Pid.Throttle, Pid.Intake, Pid.FuelTrim)
 
 /**
  * Talks to the OBD adapter at [address] ("" picks a paired one by its name) and reports what it reads, forever:

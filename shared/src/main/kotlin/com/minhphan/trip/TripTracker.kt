@@ -69,11 +69,9 @@ class TripTracker(private val zone: ZoneId, private val config: TripConfig = Tri
         val days = LinkedHashMap<String, DayChanges>()
         var maxRpm: Int? = null
         var maxCoolantC: Int? = null
-        var maxOilC: Int? = null
+        var maxIntakeC: Int? = null
         var minVoltage: Float? = null
         var maxVoltage: Float? = null
-        var fuelStart: Int? = null
-        var fuelEnd: Int? = null
     }
 
     private var trip: Active? = null
@@ -166,14 +164,10 @@ class TripTracker(private val zone: ZoneId, private val config: TripConfig = Tri
     private fun noteEngine(t: Active, e: EngineData) {
         e.rpm?.let { t.maxRpm = maxOf(t.maxRpm ?: it, it) }
         e.coolantC?.let { t.maxCoolantC = maxOf(t.maxCoolantC ?: it, it) }
-        e.oilC?.let { t.maxOilC = maxOf(t.maxOilC ?: it, it) }
+        e.intakeC?.let { t.maxIntakeC = maxOf(t.maxIntakeC ?: it, it) }
         e.voltage?.let {
             t.minVoltage = minOf(t.minVoltage ?: it, it)
             t.maxVoltage = maxOf(t.maxVoltage ?: it, it)
-        }
-        e.fuelPercent?.let {
-            if (t.fuelStart == null) t.fuelStart = it
-            t.fuelEnd = it
         }
     }
 
@@ -237,11 +231,9 @@ class TripTracker(private val zone: ZoneId, private val config: TripConfig = Tri
         end = endAt,
         maxRpm = t.maxRpm,
         maxCoolantC = t.maxCoolantC,
-        maxOilC = t.maxOilC,
+        maxIntakeC = t.maxIntakeC,
         minVoltage = t.minVoltage,
         maxVoltage = t.maxVoltage,
-        fuelStartPercent = t.fuelStart,
-        fuelEndPercent = t.fuelEnd,
         pointCount = t.pointCount,
     )
 

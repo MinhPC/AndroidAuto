@@ -7,6 +7,7 @@ package com.minhphan.trip
  *     users/{uid}/trips/{tripId}               one [TripSummary] per trip
  *     users/{uid}/trips/{tripId}/chunks/{seq}  the route, [TripPoint]s a minute or so at a time
  *     users/{uid}/live/car                     the [LiveStatus]
+ *     users/{uid}/refuels/{id}                 one [Refuel] per fill-up
  *
  * The maps are what is stored. Firestore hands numbers back as Long or Double whatever was written, so they are
  * read through [Number] and never cast.
@@ -17,6 +18,7 @@ object Schema {
     const val TRIPS = "trips"
     const val CHUNKS = "chunks"
     const val LIVE = "live"
+    const val REFUELS = "refuels"
     const val LIVE_DOC = "car"
     const val POINTS = "points"
 
@@ -47,19 +49,19 @@ private fun latLonFrom(map: Map<String, Any?>?): LatLon? {
 private fun EngineData.toMap(): Map<String, Any?> = emptyMap<String, Any?>()
     .withIfNotNull("rpm", rpm)
     .withIfNotNull("coolantC", coolantC)
-    .withIfNotNull("oilC", oilC)
+    .withIfNotNull("intakeC", intakeC)
     .withIfNotNull("loadPercent", loadPercent)
     .withIfNotNull("throttlePercent", throttlePercent)
-    .withIfNotNull("fuelPercent", fuelPercent)
+    .withIfNotNull("fuelTrimPercent", fuelTrimPercent)
     .withIfNotNull("voltage", voltage)
 
 private fun engineFrom(map: Map<String, Any?>?) = EngineData(
     rpm = map?.get("rpm").int(),
     coolantC = map?.get("coolantC").int(),
-    oilC = map?.get("oilC").int(),
+    intakeC = map?.get("intakeC").int(),
     loadPercent = map?.get("loadPercent").int(),
     throttlePercent = map?.get("throttlePercent").int(),
-    fuelPercent = map?.get("fuelPercent").int(),
+    fuelTrimPercent = map?.get("fuelTrimPercent").int(),
     voltage = map?.get("voltage").float(),
 )
 
@@ -77,11 +79,9 @@ fun TripSummary.toMap(): Map<String, Any?> = mapOf(
 )
     .withIfNotNull("maxRpm", maxRpm)
     .withIfNotNull("maxCoolantC", maxCoolantC)
-    .withIfNotNull("maxOilC", maxOilC)
+    .withIfNotNull("maxIntakeC", maxIntakeC)
     .withIfNotNull("minVoltage", minVoltage)
     .withIfNotNull("maxVoltage", maxVoltage)
-    .withIfNotNull("fuelStartPercent", fuelStartPercent)
-    .withIfNotNull("fuelEndPercent", fuelEndPercent)
 
 fun tripSummaryFrom(id: String, map: Map<String, Any?>): TripSummary? {
     val startedAt = map["startedAt"].long() ?: return null
@@ -98,11 +98,9 @@ fun tripSummaryFrom(id: String, map: Map<String, Any?>): TripSummary? {
         end = latLonFrom(map["end"].map()) ?: return null,
         maxRpm = map["maxRpm"].int(),
         maxCoolantC = map["maxCoolantC"].int(),
-        maxOilC = map["maxOilC"].int(),
+        maxIntakeC = map["maxIntakeC"].int(),
         minVoltage = map["minVoltage"].float(),
         maxVoltage = map["maxVoltage"].float(),
-        fuelStartPercent = map["fuelStartPercent"].int(),
-        fuelEndPercent = map["fuelEndPercent"].int(),
         pointCount = map["pointCount"].int() ?: 0,
     )
 }
@@ -131,10 +129,10 @@ fun TripPoint.toMap(): Map<String, Any?> = mapOf(
 )
     .withIfNotNull("r", engine.rpm)
     .withIfNotNull("c", engine.coolantC)
-    .withIfNotNull("i", engine.oilC)
+    .withIfNotNull("i", engine.intakeC)
     .withIfNotNull("l", engine.loadPercent)
     .withIfNotNull("h", engine.throttlePercent)
-    .withIfNotNull("f", engine.fuelPercent)
+    .withIfNotNull("f", engine.fuelTrimPercent)
     .withIfNotNull("b", engine.voltage)
 
 fun tripPointFrom(map: Map<String, Any?>): TripPoint? {
@@ -148,10 +146,10 @@ fun tripPointFrom(map: Map<String, Any?>): TripPoint? {
         engine = EngineData(
             rpm = map["r"].int(),
             coolantC = map["c"].int(),
-            oilC = map["i"].int(),
+            intakeC = map["i"].int(),
             loadPercent = map["l"].int(),
             throttlePercent = map["h"].int(),
-            fuelPercent = map["f"].int(),
+            fuelTrimPercent = map["f"].int(),
             voltage = map["b"].float(),
         ),
     )
@@ -174,5 +172,30 @@ fun liveStatusFrom(map: Map<String, Any?>): LiveStatus? {
         moving = map["moving"] as? Boolean ?: false,
         updatedAt = updatedAt,
         engine = engineFrom(map["engine"].map()),
+    )
+}
+
+fun Refuel.toMap(): Map<String, Any?> = mapOf(
+    "at" to at,
+    "liters" to liters,
+    "amountVnd" to amountVnd,
+    "pricePerLiter" to pricePerLiter,
+    "full" to full,
+)
+    .withIfNotNull("distanceKm", distanceKm)
+    .withIfNotNull("litersInPeriod", litersInPeriod)
+    .withIfNotNull("kmPerLiter", kmPerLiter)
+
+fun refuelFrom(id: String, map: Map<String, Any?>): Refuel? {
+    val at = map["at"].long() ?: return null
+    val liters = map["liters"].double() ?: return null
+    return Refuel(
+        id = id,
+        at = at,
+        liters = liters,
+        amountVnd = map["amountVnd"].long() ?: 0,
+        full = map["full"] as? Boolean ?: false,
+        distanceKm = map["distanceKm"].double(),
+        litersInPeriod = map["litersInPeriod"].double(),
     )
 }

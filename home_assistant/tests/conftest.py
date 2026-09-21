@@ -73,6 +73,8 @@ def fields(**values):
             return {"stringValue": v}
         if isinstance(v, dict):
             return {"mapValue": {"fields": {k: encode(x) for k, x in v.items()}}}
+        if isinstance(v, list):
+            return {"arrayValue": {"values": [encode(x) for x in v]}}
         raise TypeError(v)
 
     return {"fields": {k: encode(v) for k, v in values.items()}}

@@ -47,9 +47,9 @@
       "speed": { "name": "Speed" },
       "engine_rpm": { "name": "Engine speed" },
       "coolant_temperature": { "name": "Coolant temperature" },
-      "oil_temperature": { "name": "Oil temperature" },
+      "intake_temperature": { "name": "Intake air temperature" },
       "battery_voltage": { "name": "Battery voltage" },
-      "fuel_level": { "name": "Fuel level" },
+      "fuel_trim": { "name": "Fuel trim" },
       "engine_load": { "name": "Engine load" },
       "throttle_position": { "name": "Throttle position" },
       "last_trip_distance": { "name": "Last trip distance" },
@@ -59,7 +59,14 @@
       "last_trip_start": { "name": "Last trip start" },
       "last_trip_end": { "name": "Last trip end" },
       "last_trip_max_coolant": { "name": "Last trip max coolant temperature" },
-      "last_trip_max_oil": { "name": "Last trip max oil temperature" },
+      "last_trip_max_intake": { "name": "Last trip max intake air temperature" },
+      "fuel_economy": { "name": "Fuel economy" },
+      "fuel_economy_average": { "name": "Average fuel economy" },
+      "last_refuel_liters": { "name": "Last fill-up litres" },
+      "last_refuel_cost": { "name": "Last fill-up cost" },
+      "last_refuel_price": { "name": "Last fill-up price per litre" },
+      "last_refuel_time": { "name": "Last fill-up time" },
+      "fuel_cost_month": { "name": "Fuel cost this month" },
       "last_update": { "name": "Last update from car" }
     }
   }

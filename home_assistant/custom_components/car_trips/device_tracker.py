@@ -11,6 +11,7 @@ from homeassistant.util import dt as dt_util
 
 from .coordinator import CarTripsConfigEntry, CarTripsCoordinator
 from .entity import CarTripsEntity
+from .models import google_maps_url
 
 PARALLEL_UPDATES = 0
 
@@ -56,4 +57,5 @@ class CarTracker(CarTripsEntity, TrackerEntity):
             "speed": round(live.speed_kmh),
             "moving": live.moving,
             "last_seen": dt_util.utc_from_timestamp(live.updated_at).isoformat(),
+            "google_maps_url": google_maps_url((live.latitude, live.longitude)),
         }

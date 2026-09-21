@@ -6,10 +6,11 @@ data class LatLon(val lat: Double, val lon: Double)
 data class EngineData(
     val rpm: Int? = null,
     val coolantC: Int? = null,
-    val oilC: Int? = null,
+    val intakeC: Int? = null,
     val loadPercent: Int? = null,
     val throttlePercent: Int? = null,
-    val fuelPercent: Int? = null,
+    /** Long-term fuel trim: how far the engine computer has had to shift the fuel it injects, in % (negative: less). */
+    val fuelTrimPercent: Int? = null,
     val voltage: Float? = null,
 )
 
@@ -31,11 +32,9 @@ data class TripSummary(
     val end: LatLon,
     val maxRpm: Int? = null,
     val maxCoolantC: Int? = null,
-    val maxOilC: Int? = null,
+    val maxIntakeC: Int? = null,
     val minVoltage: Float? = null,
     val maxVoltage: Float? = null,
-    val fuelStartPercent: Int? = null,
-    val fuelEndPercent: Int? = null,
     val pointCount: Int = 0,
 ) {
     /** The average speed while moving, not counting the time spent standing still. */

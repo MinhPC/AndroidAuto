@@ -21,12 +21,19 @@ class ObdProtocolTest {
     @Test
     fun temperaturesAreOffsetByForty() {
         assertEquals(83, parsePid("41 05 7B", Pid.Coolant))
-        assertEquals(-10, parsePid("41 5C 1E", Pid.Oil))
+        assertEquals(25, parsePid("41 0F 41", Pid.Intake))
+    }
+
+    @Test
+    fun fuelTrimIsZeroAtOneTwentyEightAndScaledFromThere() {
+        assertEquals(0, parsePid("41 07 80", Pid.FuelTrim))
+        assertEquals(20, parsePid("41 07 99", Pid.FuelTrim))
+        assertEquals(-10, parsePid("41 07 73", Pid.FuelTrim))
+        assertEquals(-100, parsePid("41 07 00", Pid.FuelTrim))
     }
 
     @Test
     fun percentagesAreScaledFromTwoFiftyFive() {
-        assertEquals(50, parsePid("41 2F 80", Pid.Fuel))
         assertEquals(100, parsePid("41 11 FF", Pid.Throttle))
         assertEquals(0, parsePid("41 04 00", Pid.Load))
     }

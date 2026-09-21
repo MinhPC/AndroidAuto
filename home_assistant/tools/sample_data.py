@@ -74,11 +74,9 @@ def _trip(started: float, ended: float, distance_km: float, start: tuple, end: t
         "end": {"lat": end[0], "lon": end[1]},
         "maxRpm": rng.randint(2800, 4200),
         "maxCoolantC": rng.randint(86, 95),
-        "maxOilC": rng.randint(90, 108),
+        "maxIntakeC": rng.randint(38, 52),
         "minVoltage": round(rng.uniform(13.4, 13.9), 1),
         "maxVoltage": round(rng.uniform(14.1, 14.5), 1),
-        "fuelStartPercent": rng.randint(45, 90),
-        "fuelEndPercent": rng.randint(30, 44),
         "pointCount": max(int((ended - started) / 5), 12),
     }
 
@@ -103,7 +101,6 @@ class SampleCar:
         self._tz = timezone(timedelta(hours=utc_offset_hours))
         self._started = now()
         self._history = self._make_history(random.Random(seed))
-        self._fuel_at_start = 62
 
     # -- the past -----------------------------------------------------------------------------------------
 
@@ -154,11 +151,9 @@ class SampleCar:
             "end": {"lat": here[0], "lon": here[1]},
             "maxRpm": 3600,
             "maxCoolantC": 90,
-            "maxOilC": 96,
+            "maxIntakeC": 44,
             "minVoltage": 13.8,
             "maxVoltage": 14.3,
-            "fuelStartPercent": self._fuel_at_start,
-            "fuelEndPercent": self._fuel_at_start - int(elapsed / 600),
             "pointCount": int((ONGOING_TRIP_STARTED_MINUTES_AGO * 60 + elapsed) / 5),
         }
 
@@ -184,9 +179,9 @@ class SampleCar:
             "engine": {
                 "rpm": int(800 + speed * 32),
                 "coolantC": min(90, 70 + int((ONGOING_TRIP_STARTED_MINUTES_AGO * 60 + elapsed) / 60)),
-                "oilC": min(98, 65 + int((ONGOING_TRIP_STARTED_MINUTES_AGO * 60 + elapsed) / 45)),
+                "intakeC": min(46, 32 + int((ONGOING_TRIP_STARTED_MINUTES_AGO * 60 + elapsed) / 90)),
                 "voltage": 14.1,
-                "fuelPercent": self._fuel_at_start - int(elapsed / 600),
+                "fuelTrimPercent": int(3 * math.sin(elapsed / 60)),
                 "loadPercent": int(25 + speed / 2),
                 "throttlePercent": int(12 + speed / 4),
             },
@@ -217,4 +212,16 @@ class SampleCar:
             documents[f"{user}/trips/{trip['id']}"] = fields
         for day, total in self._days(trips).items():
             documents[f"{user}/days/{day}"] = total
+        for ago_days, liters, distance in ((35, 38.0, None), (21, 36.5, 480.0), (8, 34.0, 455.0)):
+            at = int((now - ago_days * 86400) * 1000)
+            refuel: dict[str, Any] = {
+                "at": at,
+                "liters": liters,
+                "amountVnd": round(liters * 23_400),
+                "pricePerLiter": 23_400,
+                "full": True,
+            }
+            if distance is not None:
+                refuel |= {"distanceKm": distance, "litersInPeriod": liters, "kmPerLiter": round(distance / liters, 3)}
+            documents[f"{user}/refuels/{at}"] = refuel
         return documents

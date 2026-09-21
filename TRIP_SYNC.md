@@ -65,9 +65,10 @@ integration **Car Trips** trong Home Assistant.
 
 ```
 users/{uid}/days/{yyyy-MM-dd}             tổng km, số chuyến, thời gian lái, tốc độ tối đa của ngày
-users/{uid}/trips/{tripId}                một chuyến: giờ đi/đến, km, tốc độ, nhiệt độ nước/dầu, điện áp, nhiên liệu
+users/{uid}/trips/{tripId}                một chuyến: giờ đi/đến, km, tốc độ, nhiệt độ nước/khí nạp, điện áp
 users/{uid}/trips/{tripId}/chunks/{seq}   lộ trình: điểm GPS 5 giây một lần kèm thông số động cơ
 users/{uid}/live/car                      vị trí, tốc độ và thông số động cơ gần nhất của xe
+users/{uid}/refuels/{id}                  một lần đổ xăng: số lít, số tiền, đầy bình hay không, km và km/lít
 ```
 
 Định nghĩa nằm ở `shared/` (`Schema.kt`). Integration Home Assistant đọc đúng các trường này (`models.py`).
@@ -80,10 +81,27 @@ users/{uid}/live/car                      vị trí, tốc độ và thông số
   làm mất số km đã có trên server.
 - **Không có mạng**: Firestore giữ dữ liệu trên màn hình xe và tự gửi khi có mạng, kể cả sau khi khởi động lại.
 - **Ước lượng chi phí**: mỗi phút lái tốn khoảng 7 lần ghi; 2 giờ mỗi ngày là khoảng 850 lần ghi, thấp hơn nhiều so với
-  hạn mức miễn phí (20.000 lần ghi/ngày, 50.000 lần đọc/ngày). Home Assistant đọc khoảng 6 lần mỗi lượt (30 giây
+  hạn mức miễn phí (20.000 lần ghi/ngày, 50.000 lần đọc/ngày). Home Assistant đọc 4 lần mỗi lượt, cộng các ngày đã qua trong năm mỗi giờ một lần (30 giây
   một lượt khi xe chạy, 5 phút khi đỗ).
 - **Riêng tư**: lộ trình chi tiết và vị trí xe nằm trên Firebase của bạn. Tắt công tắc "Ghi và gửi hành trình" trong
   Cài đặt (hoặc đăng xuất) để dừng gửi. Xoá dữ liệu cũ trong Firebase Console → Firestore.
+
+## Hành trình thủ công và đổ xăng (màn hình Home)
+
+Nửa phải của Home có hai ô lớn thay cho hai đồng hồ tốc độ và vòng tua (đã có trên táp lô). Cả hai dựa vào cùng một
+bộ đếm km từ GPS do dịch vụ ghi hành trình chạy, nên cần bật **Ghi và gửi hành trình** và đăng nhập Google.
+
+- **Bắt đầu hành trình / Kết thúc**: đồng hồ hành trình như trên táp lô. Bấm Bắt đầu để đếm km, thời gian và tốc độ
+  trung bình; bấm Kết thúc để giữ kết quả (hiện ở "Lần trước"). Việc này độc lập với chuyến tự động gửi Firebase, và
+  không gửi lên Firebase.
+- **Đổ xăng**: nhập số lít và số tiền (VND) mỗi lần đổ, chọn *Đổ đầy bình* nếu đổ đến đầy. Launcher tính
+  **km/lít = km đã chạy từ lần đổ đầy trước ÷ số lít** (nhiều lần đổ dở dang ở giữa được cộng vào số lít). Lần đổ
+  đầy đầu tiên chỉ làm mốc; km/lít có từ lần đổ đầy thứ hai. Số km lấy từ GPS và có thể sửa ngay trong khung nhập nếu
+  khác đồng hồ km của xe. Mỗi lần đổ được lưu vào `users/{uid}/refuels/{id}` và hiện thành cảm biến trong Home
+  Assistant (km/lít, trung bình, giá mỗi lít, tiền xăng tháng).
+- Đổ xăng khi chưa đăng nhập Google chỉ lưu trên màn hình xe, không gửi Firebase.
+- Bộ đếm km không nhận xe được chở đi hay lúc GPS tắt, nên nếu đã lái mà launcher không ghi (công tắc tắt) thì hãy
+  sửa số km trong khung nhập.
 
 ## Lưu ý
 

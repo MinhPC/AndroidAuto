@@ -7,16 +7,17 @@ enum class Pid(val code: Int, val byteCount: Int) {
     Coolant(0x05, 1),
     Load(0x04, 1),
     Throttle(0x11, 1),
-    Fuel(0x2F, 1),
-    Oil(0x5C, 1),
+    Intake(0x0F, 1),
+    FuelTrim(0x07, 1),
     ;
 
     /** The value in its display unit (rpm, km/h, °C or %), from the data bytes [a] and [b] of the answer. */
     fun decode(a: Int, b: Int): Int = when (this) {
         Rpm -> (a * 256 + b) / 4
         Speed -> a
-        Coolant, Oil -> a - 40
-        Load, Throttle, Fuel -> Math.round(a * 100f / 255f)
+        Coolant, Intake -> a - 40
+        Load, Throttle -> Math.round(a * 100f / 255f)
+        FuelTrim -> Math.round((a - 128) * 100f / 128f)
     }
 }
 
@@ -25,20 +26,20 @@ data class ObdValues(
     val speedKmh: Int? = null,
     val rpm: Int? = null,
     val coolantC: Int? = null,
-    val oilC: Int? = null,
+    val intakeC: Int? = null,
     val loadPercent: Int? = null,
     val throttlePercent: Int? = null,
-    val fuelPercent: Int? = null,
+    val fuelTrimPercent: Int? = null,
     val voltage: Float? = null,
 ) {
     fun with(pid: Pid, value: Int?): ObdValues = when (pid) {
         Pid.Rpm -> copy(rpm = value)
         Pid.Speed -> copy(speedKmh = value)
         Pid.Coolant -> copy(coolantC = value)
-        Pid.Oil -> copy(oilC = value)
+        Pid.Intake -> copy(intakeC = value)
         Pid.Load -> copy(loadPercent = value)
         Pid.Throttle -> copy(throttlePercent = value)
-        Pid.Fuel -> copy(fuelPercent = value)
+        Pid.FuelTrim -> copy(fuelTrimPercent = value)
     }
 }
 

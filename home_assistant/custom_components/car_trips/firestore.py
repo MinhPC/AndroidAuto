@@ -1,6 +1,6 @@
 """A small read-only Firestore client for a service account, over REST.
 
-Only what the integration needs: read one document, run a query, and add up a field over a range of documents.
+Only what the integration needs: read one document, run a query, and read a range of documents.
 It signs its own token request with PyJWT, which Home Assistant already ships, so nothing extra is installed.
 """
 
@@ -216,45 +216,36 @@ class FirestoreClient:
         payload = await self._request("POST", f"{self._root}/{parent_path}:runQuery", {"structuredQuery": structured_query})
         return [decode_document(item["document"]) for item in payload or [] if "document" in item]
 
-    async def sum_range(
+    async def documents_between(
         self,
         parent_path: str,
         collection: str,
         first_id: str,
         last_id: str,
         fields: list[str],
-    ) -> dict[str, float]:
-        """The sum of each of [fields] over the documents of [collection] whose ids run from first to last.
+    ) -> list[dict[str, Any]]:
+        """The documents of [collection] whose ids run from first to last, each keeping only [fields].
 
-        One aggregation query, which Firestore bills as a single read for every thousand documents it adds up,
-        instead of reading a year of days one by one.
+        Firestore cannot add fields up over a range of ids without an index it does not support, so the caller adds
+        them up. Filtering on the id alone needs no index.
         """
         parent = f"{self._root}/{parent_path}"
-        query = {
-            "structuredAggregationQuery": {
-                "structuredQuery": {
-                    "from": [{"collectionId": collection}],
-                    "where": {
-                        "compositeFilter": {
-                            "op": "AND",
-                            "filters": [
-                                _id_filter("GREATER_THAN_OR_EQUAL", f"{parent}/{collection}/{first_id}"),
-                                _id_filter("LESS_THAN_OR_EQUAL", f"{parent}/{collection}/{last_id}"),
-                            ],
-                        }
-                    },
+        return await self.run_query(
+            parent_path,
+            {
+                "from": [{"collectionId": collection}],
+                "select": {"fields": [{"fieldPath": name} for name in fields]},
+                "where": {
+                    "compositeFilter": {
+                        "op": "AND",
+                        "filters": [
+                            _id_filter("GREATER_THAN_OR_EQUAL", f"{parent}/{collection}/{first_id}"),
+                            _id_filter("LESS_THAN_OR_EQUAL", f"{parent}/{collection}/{last_id}"),
+                        ],
+                    }
                 },
-                "aggregations": [{"alias": name, "sum": {"field": {"fieldPath": name}}} for name in fields],
-            }
-        }
-        payload = await self._request("POST", f"{parent}:runAggregationQuery", query)
-        sums = {name: 0.0 for name in fields}
-        for item in payload or []:
-            for name, value in item.get("result", {}).get("aggregateFields", {}).items():
-                decoded = decode_value(value)
-                if name in sums and isinstance(decoded, (int, float)):
-                    sums[name] = float(decoded)
-        return sums
+            },
+        )
 
 
 async def _json(response: aiohttp.ClientResponse) -> Any:
@@ -271,6 +262,9 @@ def _id_filter(op: str, name: str) -> dict[str, Any]:
 
 def _message(payload: Any) -> str:
     """What Google says went wrong, from either of its two error shapes."""
+    if isinstance(payload, list):
+        # Query endpoints stream their answer, so an error arrives as the one item of a list.
+        payload = next((item for item in payload if isinstance(item, dict) and "error" in item), None)
     if not isinstance(payload, dict):
         return ""
     error = payload.get("error")

@@ -9,14 +9,17 @@ Mọi thực thể thuộc một thiết bị (tên bạn đặt lúc thêm, m�
 
 | Thực thể | Nội dung |
 |---|---|
-| `device_tracker.car` | Vị trí xe trên bản đồ; HA tự tính "home / not_home" như với điện thoại. Có thuộc tính `speed`, `moving`, `last_seen`. |
+| `device_tracker.car` | Vị trí xe trên bản đồ; HA tự tính "home / not_home" như với điện thoại. Có thuộc tính `speed`, `moving`, `last_seen` và `google_maps_url` (link mở Google Maps đúng vị trí xe). |
 | `binary_sensor.car_driving` | Bật khi xe đang chạy. |
 | `sensor.car_distance_today` / `_this_week` / `_this_month` / `_this_year` | Quãng đường (km). Tuần tính từ thứ Hai đến Chủ nhật. Dạng `total_increasing`: về 0 khi sang kỳ mới, dùng được cho thống kê dài hạn. |
 | `sensor.car_trips_today`, `sensor.car_driving_time_today`, `sensor.car_top_speed_today` | Số chuyến, thời gian lái (phút), tốc độ tối đa của hôm nay. |
-| `sensor.car_speed`, `_engine_speed`, `_coolant_temperature`, `_oil_temperature`, `_battery_voltage`, `_fuel_level` | Tốc độ và thông số động cơ trong lần gửi gần nhất. Khi xe đỗ, launcher không gửi thông số động cơ nên các cảm biến này hiện *unknown*. |
+| `sensor.car_speed`, `_engine_speed`, `_coolant_temperature`, `_intake_temperature`, `_battery_voltage`, `_fuel_trim` | Tốc độ và thông số động cơ trong lần gửi gần nhất. Khi xe đỗ, launcher không gửi thông số động cơ nên các cảm biến này hiện *unknown*. |
 | `sensor.car_engine_load`, `_throttle_position` | Như trên, mặc định tắt (bật trong trang thực thể). |
-| `sensor.car_last_trip_distance`, `_driving_time`, `_average_speed`, `_top_speed`, `_start`, `_end` | Chuyến gần nhất: đang đi thì là chuyến hiện tại, đỗ thì là chuyến vừa xong. `_end` là *unknown* khi chuyến chưa kết thúc. Cảm biến quãng đường có thuộc tính toạ độ điểm đi/đến và `ongoing`. |
-| `sensor.car_last_trip_max_coolant`, `_max_oil` (mặc định tắt) | Nhiệt độ nước / dầu cao nhất của chuyến gần nhất. |
+| `sensor.car_last_trip_distance`, `_driving_time`, `_average_speed`, `_top_speed`, `_start`, `_end` | Chuyến gần nhất: đang đi thì là chuyến hiện tại, đỗ thì là chuyến vừa xong. `_end` là *unknown* khi chuyến chưa kết thúc. Cảm biến quãng đường có thuộc tính toạ độ điểm đi/đến, `ongoing` và `google_maps_route_url` (link mở lộ trình trên Google Maps). |
+| `sensor.car_last_trip_max_coolant`, `_max_intake` (mặc định tắt) | Nhiệt độ nước / khí nạp cao nhất của chuyến gần nhất. |
+| `sensor.car_fuel_economy`, `_average_fuel_economy` | Mức tiêu hao (km/lít) của lần đổ đầy gần nhất và trung bình (tổng km chia tổng lít). Chỉ có sau khi đổ đầy bình hai lần trên launcher. |
+| `sensor.car_last_fill_up_litres`, `_cost`, `_price_per_litre`, `_time` | Số lít, số tiền (VND), giá mỗi lít và thời điểm của lần đổ xăng gần nhất, do bạn nhập ở nút **Đổ xăng** trên launcher. *unknown* cho tới lần đổ đầu tiên. |
+| `sensor.car_fuel_cost_this_month` | Tổng tiền xăng đã ghi trong tháng này (VND). |
 | `sensor.car_last_update` | Lần cuối HA nhận được dữ liệu từ xe (chẩn đoán). |
 
 ## Cài đặt
@@ -68,14 +71,32 @@ project này, nên một khoá thật không thể bị chỉ sang máy chủ kh
 
 - HA đọc Firestore qua REST bằng chính khoá service account (tự ký JWT bằng PyJWT có sẵn trong HA), không dùng thư
   viện Google nào.
-- Mỗi lượt đọc gồm: vị trí xe, tổng hôm nay, chuyến gần nhất và ba truy vấn cộng dồn (tuần, tháng, năm). Truy vấn cộng
-  dồn tính là một lần đọc cho mỗi nghìn ngày, nên đọc cả năm cũng chỉ vài lần đọc.
-- **Xe chạy: 30 giây một lượt; xe đỗ: 5 phút một lượt.** Mỗi lượt khoảng 6 lần đọc Firestore, tức khoảng 8.600 lần
-  đọc một ngày nếu xe chạy suốt, thấp hơn hạn mức miễn phí 50.000 lần/ngày.
+- Mỗi lượt đọc gồm: vị trí xe, tổng hôm nay, chuyến gần nhất và lần đổ xăng mới nhất (4 lần đọc). Khi có lần đổ xăng mới, HA đọc lại 20 lần đổ gần nhất để tính km/lít trung bình và tiền xăng tháng. Tổng tuần/tháng/năm được cộng từ các ngày
+  đã qua: Firestore không cộng dồn được theo dải ngày nếu không có index mà nó không hỗ trợ, nên HA đọc các ngày từ đầu
+  năm đến hôm qua (mỗi ngày một lần đọc, tối đa khoảng 365), giữ trong bộ nhớ và chỉ đọc lại mỗi giờ hoặc khi sang ngày mới.
+- **Xe chạy: 30 giây một lượt; xe đỗ: 5 phút một lượt.** Xe chạy suốt tốn khoảng 11.500 lần đọc một ngày cho các lượt,
+  cộng tối đa khoảng 8.800 lần đọc các ngày đã qua (cuối năm), tổng khoảng 20.000, thấp hơn hạn mức miễn phí
+  50.000 lần/ngày.
 - Nếu xe mất điện giữa chuyến, launcher không kịp báo "đã đỗ". HA coi vị trí im lặng quá 2 phút là *không chạy* và
   chuyến im lặng quá 10 phút là *đã kết thúc*.
 
 ## Ví dụ
+
+Nút mở lộ trình chuyến gần nhất và vị trí xe trên Google Maps (thẻ Markdown):
+
+```yaml
+type: markdown
+content: >
+  {% set route = state_attr('sensor.car_last_trip_distance', 'google_maps_route_url') %}
+  {% if route %}[Xem lộ trình chuyến gần nhất trên Google Maps]({{ route }}){% endif %}
+
+  [Xe đang ở đâu?]({{ state_attr('device_tracker.car', 'google_maps_url') }})
+```
+
+Link lộ trình không cần khoá API. Nó gồm điểm đi, điểm đến và tối đa 8 điểm dọc đường lấy từ dữ liệu GPS của chuyến, rồi Google
+tự vẽ đường đi giữa các điểm đó. Vì vậy đường vẽ bám theo đường phố và gần đúng, không trùng từng mét với đường xe đã chạy.
+Mỗi lần tạo link tốn khoảng 10 lần đọc Firestore: một chuyến đã kết thúc chỉ đọc một lần, chuyến đang đi đọc lại mỗi 5 phút.
+Muốn xem đường xe đã đi trên bản đồ của Home Assistant, dùng thẻ bản đồ bên dưới với `hours_to_show`.
 
 Thẻ bản đồ:
 
@@ -83,6 +104,7 @@ Thẻ bản đồ:
 type: map
 entities:
   - entity: device_tracker.car
+hours_to_show: 24  # vẽ đường xe đã đi trong 24 giờ qua
 ```
 
 Thống kê quãng đường theo tháng:

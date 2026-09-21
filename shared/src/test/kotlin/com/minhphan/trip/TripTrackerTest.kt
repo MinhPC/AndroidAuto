@@ -77,17 +77,15 @@ class TripTrackerTest {
     @Test
     fun engineDataBecomesTheTripStatistics() {
         val tracker = TripTracker(zone)
-        tracker.onFix(fix(0, 0.0, 30f), EngineData(rpm = 1500, coolantC = 70, oilC = 60, voltage = 14.1f, fuelPercent = 80))
-        tracker.onFix(fix(20, 333.0, 60f), EngineData(rpm = 3200, coolantC = 88, oilC = 95, voltage = 13.8f, fuelPercent = 79))
+        tracker.onFix(fix(0, 0.0, 30f), EngineData(rpm = 1500, coolantC = 70, intakeC = 30, voltage = 14.1f, fuelTrimPercent = 2))
+        tracker.onFix(fix(20, 333.0, 60f), EngineData(rpm = 3200, coolantC = 88, intakeC = 45, voltage = 13.8f, fuelTrimPercent = -3))
         val trip = tracker.finish(t0 + 21_000).saves().last()
 
         assertEquals(3200, trip.maxRpm)
         assertEquals(88, trip.maxCoolantC)
-        assertEquals(95, trip.maxOilC)
+        assertEquals(45, trip.maxIntakeC)
         assertEquals(13.8f, trip.minVoltage!!, 0.001f)
         assertEquals(14.1f, trip.maxVoltage!!, 0.001f)
-        assertEquals(80, trip.fuelStartPercent)
-        assertEquals(79, trip.fuelEndPercent)
     }
 
     @Test

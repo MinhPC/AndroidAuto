@@ -8,7 +8,7 @@ import kotlin.math.sin
 
 /**
  * An ELM327 that needs no adapter and no car: it answers like one, with a speed that rises and falls. It does
- * not know the oil temperature, like many cars, so that tile can be seen empty. Only debug builds offer it.
+ * not know the fuel trim, like some cars, so that tile can be seen empty. Only debug builds offer it.
  */
 class SimulatedElmLink : ElmLink {
     private val startedAt = System.currentTimeMillis()
@@ -27,8 +27,8 @@ class SimulatedElmLink : ElmLink {
             "0105" -> "41 05 " + hex(40 + 78 + (t / 4).toInt().coerceAtMost(14))
             "0104" -> "41 04 " + hex((30 + speed).coerceAtMost(100) * 255 / 100)
             "0111" -> "41 11 " + hex((10 + speed / 2).coerceAtMost(100) * 255 / 100)
-            "012F" -> "41 2F " + hex(62 * 255 / 100)
-            "015C" -> "NO DATA"
+            "010F" -> "41 0F " + hex(40 + 32 + (t / 6).toInt().coerceAtMost(8))
+            "0107" -> "NO DATA"
             else -> if (c.startsWith("AT")) "OK" else "?"
         }
     }

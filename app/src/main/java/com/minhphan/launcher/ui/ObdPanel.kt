@@ -44,25 +44,23 @@ import com.minhphan.launcher.R
 import com.minhphan.launcher.obd.ObdProblem
 import com.minhphan.launcher.obd.ObdState
 import com.minhphan.launcher.obd.ObdValues
+import com.minhphan.trip.FuelBook
+import com.minhphan.trip.TripMeter
+import kotlin.math.abs
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 
 /** How faded the values are while the connection is being re-established. */
 private const val STALE_ALPHA = 0.45f
 
-private const val SPEED_MAX_KMH = 240f
-private const val SPEED_TICK_STEP = 40f
-private const val RPM_MAX = 8000f
-private const val RPM_TICK_STEP = 1000f
-private const val RPM_REDLINE = 6500f
-
 // Where each smaller reading turns amber and red.
 private const val COOLANT_WARN_C = 100
 private const val COOLANT_HOT_C = 105
-private const val OIL_WARN_C = 125
-private const val OIL_HOT_C = 140
-private const val FUEL_WARN_PERCENT = 20
-private const val FUEL_LOW_PERCENT = 10
+private const val INTAKE_WARN_C = 60
+private const val INTAKE_HOT_C = 75
+private const val TRIM_WARN_PERCENT = 10
+private const val TRIM_BAD_PERCENT = 20
+private const val TRIM_SPAN_PERCENT = 25f
 private const val VOLTAGE_LOW = 11.8f
 private const val VOLTAGE_HIGH = 15f
 
@@ -70,15 +68,23 @@ private const val VOLTAGE_HIGH = 15f
 private enum class Tone { Normal, Warn, Danger }
 
 /**
- * The right half of Home, read from the OBD adapter: speed and engine speed on two round dials, then coolant and
- * oil temperature, battery voltage, engine load, throttle and fuel level as small tiles with a level bar. Values
- * the car does not report show "--"; while there is no connection the panel says why and, where the user can fix
- * it, offers the way. While the link is only being re-established the last reading stays up, faded.
+ * The right half of Home: the trip computer and the fuel book on top (they need no adapter), then, read from the
+ * OBD adapter, coolant and intake air temperature, battery voltage, engine load, throttle and fuel trim as small
+ * tiles with a level bar. Speed and engine speed are not here: the dashboard already shows them. Values the car
+ * does not report show "--"; while there is no connection the panel says why and, where the user can fix it,
+ * offers the way. While the link is only being re-established the last reading stays up, faded.
  */
 @Composable
 fun ObdPanel(
     obd: StateFlow<ObdState>,
+    trip: StateFlow<TripMeter>,
+    totalKm: StateFlow<Double>,
+    fuel: StateFlow<FuelBook>,
+    recording: Boolean,
     bluetooth: BluetoothPermission,
+    onStartTrip: () -> Unit,
+    onStopTrip: () -> Unit,
+    onRefuel: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -118,34 +124,15 @@ fun ObdPanel(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Header(state)
+            Row(Modifier.weight(2f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TripCard(trip, totalKm, recording, onStartTrip, onStopTrip)
+                RefuelCard(fuel, onRefuel)
+            }
             if (problem != null) {
-                Recovery(problem, bluetooth, onOpenSettings, Modifier.weight(1f).fillMaxWidth())
+                Recovery(problem, bluetooth, onOpenSettings, Modifier.weight(2f).fillMaxWidth())
                 return@Column
             }
 
-            Row(Modifier.weight(2.3f).fillMaxWidth().alpha(dim), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                DialGauge(
-                    value = values.speedKmh?.toFloat(),
-                    maxValue = SPEED_MAX_KMH,
-                    readout = values.speedKmh?.toString() ?: "--",
-                    unit = stringResource(R.string.speed_unit),
-                    label = stringResource(R.string.obd_speed),
-                    majorStep = SPEED_TICK_STEP,
-                    tickLabel = { it.toInt().toString() },
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                )
-                DialGauge(
-                    value = values.rpm?.toFloat(),
-                    maxValue = RPM_MAX,
-                    readout = values.rpm?.toString() ?: "--",
-                    unit = "rpm",
-                    label = stringResource(R.string.obd_rpm),
-                    majorStep = RPM_TICK_STEP,
-                    tickLabel = { (it / 1000f).toInt().toString() },
-                    redFrom = RPM_REDLINE,
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                )
-            }
             TileRow(dim) {
                 Metric(
                     label = stringResource(R.string.obd_coolant),
@@ -156,12 +143,12 @@ fun ObdPanel(
                     tone = toneAbove(values.coolantC, COOLANT_WARN_C, COOLANT_HOT_C),
                 )
                 Metric(
-                    label = stringResource(R.string.obd_oil),
-                    value = values.oilC?.toString(),
+                    label = stringResource(R.string.obd_intake),
+                    value = values.intakeC?.toString(),
                     unit = "°C",
                     valueSize = tileValueSize,
-                    fraction = values.oilC?.let { (it - 40) / 110f },
-                    tone = toneAbove(values.oilC, OIL_WARN_C, OIL_HOT_C),
+                    fraction = values.intakeC?.let { it / 80f },
+                    tone = toneAbove(values.intakeC, INTAKE_WARN_C, INTAKE_HOT_C),
                 )
                 Metric(
                     label = stringResource(R.string.obd_voltage),
@@ -188,12 +175,13 @@ fun ObdPanel(
                     fraction = values.throttlePercent?.let { it / 100f },
                 )
                 Metric(
-                    label = stringResource(R.string.obd_fuel),
-                    value = values.fuelPercent?.toString(),
+                    label = stringResource(R.string.obd_fuel_trim),
+                    value = values.fuelTrimPercent?.let { "%+d".format(it) },
                     unit = "%",
                     valueSize = tileValueSize,
-                    fraction = values.fuelPercent?.let { it / 100f },
-                    tone = toneBelow(values.fuelPercent, FUEL_WARN_PERCENT, FUEL_LOW_PERCENT),
+                    // The bar sits half full at zero: filled more when the engine adds fuel, less when it takes it away.
+                    fraction = values.fuelTrimPercent?.let { (it + TRIM_SPAN_PERCENT) / (2 * TRIM_SPAN_PERCENT) },
+                    tone = toneAway(values.fuelTrimPercent, TRIM_WARN_PERCENT, TRIM_BAD_PERCENT),
                 )
             }
         }
@@ -207,12 +195,8 @@ private fun toneAbove(value: Int?, warn: Int, danger: Int) = when {
     else -> Tone.Normal
 }
 
-private fun toneBelow(value: Int?, warn: Int, danger: Int) = when {
-    value == null -> Tone.Normal
-    value <= danger -> Tone.Danger
-    value <= warn -> Tone.Warn
-    else -> Tone.Normal
-}
+/** Like [toneAbove], for a reading that is wrong in either direction: what counts is how far it is from zero. */
+private fun toneAway(value: Int?, warn: Int, danger: Int) = toneAbove(value?.let { abs(it) }, warn, danger)
 
 @Composable
 private fun ColumnScope.TileRow(alpha: Float, content: @Composable RowScope.() -> Unit) {

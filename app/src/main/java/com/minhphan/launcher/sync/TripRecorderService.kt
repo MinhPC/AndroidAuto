@@ -98,6 +98,7 @@ class TripRecorderService : Service() {
                 lastFixTime = fix.timeMs
                 lastFixElapsed = SystemClock.elapsedRealtime()
                 app.syncStatus.fix()
+                app.driveLog.onFix(fix)
                 uploader.handle(tracker.onFix(fix, engine))
             }
             // The flow ends when there is no location permission or no GPS: nothing to record.
@@ -116,7 +117,10 @@ class TripRecorderService : Service() {
         }
         scope = null
         this.tracker = null
-        (application as LauncherApplication).syncStatus.recording(false)
+        (application as LauncherApplication).apply {
+            driveLog.flush()
+            syncStatus.recording(false)
+        }
         super.onDestroy()
     }
 
@@ -171,9 +175,9 @@ private fun Location.toFix() = Fix(
 internal fun ObdValues.toEngine() = EngineData(
     rpm = rpm,
     coolantC = coolantC,
-    oilC = oilC,
+    intakeC = intakeC,
     loadPercent = loadPercent,
     throttlePercent = throttlePercent,
-    fuelPercent = fuelPercent,
+    fuelTrimPercent = fuelTrimPercent,
     voltage = voltage,
 )

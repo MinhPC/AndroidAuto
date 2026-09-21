@@ -47,9 +47,9 @@
       "speed": { "name": "Tốc độ" },
       "engine_rpm": { "name": "Vòng tua" },
       "coolant_temperature": { "name": "Nhiệt độ nước làm mát" },
-      "oil_temperature": { "name": "Nhiệt độ dầu" },
+      "intake_temperature": { "name": "Nhiệt độ khí nạp" },
       "battery_voltage": { "name": "Điện áp ắc quy" },
-      "fuel_level": { "name": "Mức nhiên liệu" },
+      "fuel_trim": { "name": "Hiệu chỉnh nhiên liệu" },
       "engine_load": { "name": "Tải động cơ" },
       "throttle_position": { "name": "Độ mở chân ga" },
       "last_trip_distance": { "name": "Quãng đường chuyến gần nhất" },
@@ -59,7 +59,14 @@
       "last_trip_start": { "name": "Giờ đi chuyến gần nhất" },
       "last_trip_end": { "name": "Giờ đến chuyến gần nhất" },
       "last_trip_max_coolant": { "name": "Nhiệt độ nước tối đa chuyến gần nhất" },
-      "last_trip_max_oil": { "name": "Nhiệt độ dầu tối đa chuyến gần nhất" },
+      "last_trip_max_intake": { "name": "Nhiệt độ khí nạp tối đa chuyến gần nhất" },
+      "fuel_economy": { "name": "Mức tiêu hao (km/lít)" },
+      "fuel_economy_average": { "name": "Mức tiêu hao trung bình" },
+      "last_refuel_liters": { "name": "Số lít lần đổ gần nhất" },
+      "last_refuel_cost": { "name": "Số tiền lần đổ gần nhất" },
+      "last_refuel_price": { "name": "Giá mỗi lít lần đổ gần nhất" },
+      "last_refuel_time": { "name": "Thời điểm đổ xăng gần nhất" },
+      "fuel_cost_month": { "name": "Tiền xăng tháng này" },
       "last_update": { "name": "Lần cuối nhận dữ liệu từ xe" }
     }
   }

@@ -19,8 +19,10 @@ import com.minhphan.launcher.sync.SyncState
 import com.minhphan.launcher.sync.TestResult
 import com.minhphan.launcher.sync.toEngine
 import com.minhphan.trip.EngineData
+import com.minhphan.trip.FuelBook
 import com.minhphan.trip.LatLon
 import com.minhphan.trip.LiveStatus
+import com.minhphan.trip.TripMeter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.minhphan.cloud.AccountState
@@ -33,6 +35,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -68,6 +71,19 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     /** What the trip recorder is doing, shown in Settings. */
     val syncState: StateFlow<SyncState> = launcher.syncStatus.state
+
+    /** Whether the trip recorder is running. Apart from [syncState], which changes with every GPS fix and every write. */
+    val recording: StateFlow<Boolean> = syncState.map { it.recording }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, syncState.value.recording)
+
+    /** The trip the driver started by hand, and what the last one came to. */
+    val tripMeter: StateFlow<TripMeter> = launcher.driveLog.trip
+
+    /** Kilometres driven so far, as the GPS saw; the trip computer counts from where this stood. */
+    val totalKm: StateFlow<Double> = launcher.driveLog.totalKm
+
+    /** The last fill-up and the average fuel economy. */
+    val fuelBook: StateFlow<FuelBook> = launcher.driveLog.fuel
 
     private val _connectivity = MutableStateFlow<List<DiagnosticLine>>(emptyList())
 
@@ -116,6 +132,19 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             engine = real ?: SAMPLE_ENGINE,
         )
         return TestOutcome(launcher.tripUploader.sendTest(live), realEngine = real != null)
+    }
+
+    fun startTrip() = launcher.driveLog.startTrip(System.currentTimeMillis())
+
+    fun stopTrip() = launcher.driveLog.stopTrip(System.currentTimeMillis())
+
+    /** The kilometres since the last full fill-up, to offer as the default in the fill-up form. */
+    fun suggestedRefuelKm(): Double? = launcher.driveLog.suggestedKm()
+
+    /** Records a fill-up on the car and sends it to the signed-in account. [distanceKm] is the driver's own figure, if any. */
+    fun recordRefuel(liters: Double, amountVnd: Long, full: Boolean, distanceKm: Double?) {
+        val refuel = launcher.driveLog.recordRefuel(System.currentTimeMillis(), liters, amountVnd, full, distanceKm)
+        launcher.tripUploader.saveRefuel(refuel)
     }
 
     fun setSyncTrips(value: Boolean) = settingsStore.setSyncTrips(value)
@@ -173,7 +202,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
         private val SAMPLE_POSITION = LatLon(21.0285, 105.8542) // Hoan Kiem, Hanoi
         private val SAMPLE_ENGINE = EngineData(
-            rpm = 2100, coolantC = 88, oilC = 95, loadPercent = 35, throttlePercent = 18, fuelPercent = 55, voltage = 14.1f,
+            rpm = 2100, coolantC = 88, intakeC = 38, loadPercent = 35, throttlePercent = 18, fuelTrimPercent = -2, voltage = 14.1f,
         )
     }
 }

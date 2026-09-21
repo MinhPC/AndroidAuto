@@ -1,6 +1,7 @@
 package com.minhphan.launcher
 
 import android.app.Application
+import com.minhphan.launcher.data.DriveLog
 import com.minhphan.launcher.data.SettingsStore
 import com.minhphan.launcher.obd.ObdHub
 import com.minhphan.cloud.CloudAccount
@@ -29,6 +30,7 @@ class LauncherApplication : Application() {
     val settingsStore by lazy { SettingsStore(this) }
     val obdHub by lazy { ObdHub(this, settingsStore.settings, appScope) }
     val cloud by lazy { CloudAccount(this) }
+    val driveLog by lazy { DriveLog(this) }
     val syncStatus = SyncStatus()
     val tripUploader by lazy { TripUploader(this, cloud, syncStatus) }
 }

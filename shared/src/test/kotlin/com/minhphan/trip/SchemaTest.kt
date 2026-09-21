@@ -10,7 +10,7 @@ class SchemaTest {
         val trip = TripSummary(
             id = "1", startedAt = 1_000, endedAt = 9_000, ongoing = false, day = "2026-09-21", distanceKm = 12.34,
             movingSeconds = 800, maxSpeedKmh = 88f, start = LatLon(21.0, 105.8), end = LatLon(21.1, 105.9),
-            maxRpm = 4200, maxCoolantC = 92, minVoltage = 13.2f, fuelStartPercent = 70, pointCount = 42,
+            maxRpm = 4200, maxCoolantC = 92, minVoltage = 13.2f, maxIntakeC = 41, pointCount = 42,
         )
         assertEquals(trip, tripSummaryFrom("1", firestoreLike(trip.toMap())))
         assertNull(tripSummaryFrom("2", mapOf("day" to "2026-09-21")))
@@ -24,8 +24,19 @@ class SchemaTest {
         val point = TripPoint(5_000, LatLon(21.0, 105.8), 61.5f, EngineData(rpm = 2100, coolantC = 88, voltage = 14.2f))
         assertEquals(point, tripPointFrom(firestoreLike(point.toMap())))
 
-        val live = LiveStatus(LatLon(21.0, 105.8), 40f, true, 7_000, EngineData(fuelPercent = 55))
+        val live = LiveStatus(LatLon(21.0, 105.8), 40f, true, 7_000, EngineData(intakeC = 38, fuelTrimPercent = -4))
         assertEquals(live, liveStatusFrom(firestoreLike(live.toMap())))
+    }
+
+    @Test
+    fun aRefuelSurvivesToo() {
+        val refuel = Refuel("2000", 2_000, 35.5, 816_500, full = true, distanceKm = 512.0, litersInPeriod = 35.5)
+        assertEquals(refuel, refuelFrom("2000", firestoreLike(refuel.toMap())))
+        assertEquals(23_000L, refuel.toMap()["pricePerLiter"])
+
+        val part = Refuel("3000", 3_000, 10.0, 230_000, full = false)
+        assertEquals(part, refuelFrom("3000", firestoreLike(part.toMap())))
+        assertNull(refuelFrom("4", mapOf("liters" to 10.0)))
     }
 
     @Test

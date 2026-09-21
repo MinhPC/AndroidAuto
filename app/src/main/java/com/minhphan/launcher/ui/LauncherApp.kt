@@ -62,6 +62,9 @@ fun LauncherApp(viewModel: LauncherViewModel) {
     var showDiagnostics by rememberSaveable { mutableStateOf(false) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var showAllApps by rememberSaveable { mutableStateOf(false) }
+    var showRefuel by rememberSaveable { mutableStateOf(false) }
+    val recording by viewModel.recording.collectAsStateWithLifecycle()
+    val fuelBook by viewModel.fuelBook.collectAsStateWithLifecycle()
     val updateState by viewModel.updateState.collectAsStateWithLifecycle()
     val pageOpen = showAllApps || showSettings || showDiagnostics
     val bluetooth = rememberBluetoothPermission()
@@ -126,7 +129,14 @@ fun LauncherApp(viewModel: LauncherViewModel) {
     val obdPanel: @Composable (Modifier) -> Unit = { modifier ->
         ObdPanel(
             obd = viewModel.obd,
+            trip = viewModel.tripMeter,
+            totalKm = viewModel.totalKm,
+            fuel = viewModel.fuelBook,
+            recording = recording,
             bluetooth = bluetooth,
+            onStartTrip = viewModel::startTrip,
+            onStopTrip = viewModel::stopTrip,
+            onRefuel = { showRefuel = true },
             onOpenSettings = { showSettings = true },
             modifier = modifier,
         )
@@ -224,6 +234,18 @@ fun LauncherApp(viewModel: LauncherViewModel) {
                     bluetooth = bluetooth,
                     onOpenDiagnostics = { showDiagnostics = true },
                     onClose = { showSettings = false },
+                )
+            }
+
+            if (showRefuel) {
+                RefuelDialog(
+                    book = fuelBook,
+                    suggestedKm = remember { viewModel.suggestedRefuelKm() },
+                    onSave = { liters, amountVnd, full, distanceKm ->
+                        viewModel.recordRefuel(liters, amountVnd, full, distanceKm)
+                        showRefuel = false
+                    },
+                    onDismiss = { showRefuel = false },
                 )
             }
 
