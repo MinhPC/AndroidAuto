@@ -33,11 +33,53 @@
     <string name="update_error_manifest">Tệp thông tin cập nhật không hợp lệ</string>
     <string name="test_connectivity">Kiểm tra kết nối mạng</string>
     <string name="testing_connectivity">Đang kiểm tra…</string>
+    <string name="map_panel_title">Bản đồ</string>
+    <string name="map_panel_hint">Bấm nút bên dưới để mở bản đồ vào khung này. Nếu app mở toàn màn hình thì firmware chưa hỗ trợ cửa sổ nổi. Hãy thử mục Chẩn đoán.</string>
+    <string name="open_map_half">Mở %1$s ở nửa màn hình</string>
+    <string name="map_not_installed">Chưa cài Google Maps hoặc Waze.</string>
+    <string name="nav_home">Về nhà</string>
+    <string name="nav_work">Đến cơ quan</string>
+    <string name="nav_needs_address">Chưa có địa chỉ. Hãy nhập trong Cài đặt.</string>
+    <string name="nav_not_installed">Chưa cài ứng dụng dẫn đường đã chọn.</string>
+    <string name="settings_button">Cài đặt</string>
+    <string name="settings_title">Cài đặt</string>
+    <string name="settings_dock_title">Ứng dụng ở thanh dưới (%1$d/%2$d)</string>
+    <string name="settings_places_title">Địa điểm</string>
+    <string name="place_home_label">Địa chỉ nhà</string>
+    <string name="place_work_label">Địa chỉ cơ quan</string>
+    <string name="place_hint">Bỏ trống thì Waze dùng Nhà / Cơ quan đã lưu trong Waze. Google Maps cần có địa chỉ.</string>
+    <string name="navigator_title">Ứng dụng dẫn đường</string>
+    <string name="navigator_auto">Tự chọn (Waze nếu có, không thì Google Maps)</string>
+    <string name="navigator_waze">Waze</string>
+    <string name="navigator_maps">Google Maps</string>
+    <string name="settings_theme_title">Giao diện sáng / tối</string>
+    <string name="theme_auto">Tự động theo mặt trời</string>
+    <string name="theme_system">Theo hệ thống</string>
+    <string name="theme_light">Luôn sáng</string>
+    <string name="theme_dark">Luôn tối</string>
+    <string name="sun_times">Hôm nay mặt trời mọc %1$s, lặn %2$s (theo vị trí GPS gần nhất)</string>
+    <string name="sun_unknown">Chưa có vị trí GPS nên tạm dùng ban ngày từ 06:00 đến 18:00.</string>
+    <string name="settings_park_hint">Chỉ nhập và đổi cài đặt khi đã dừng xe.</string>
     <string name="speed_unit">km/h</string>
-    <string name="drive_moving">Đang chạy</string>
-    <string name="drive_stopped">Đang dừng</string>
-    <string name="drive_searching">Đang tìm tín hiệu GPS…</string>
+    <string name="gps_signal_ok">GPS: đã có tín hiệu</string>
+    <string name="gps_signal_none">GPS: chưa có tín hiệu</string>
     <string name="drive_no_permission">Chưa có quyền vị trí để biết xe đang chạy hay dừng</string>
     <string name="grant_location">Cấp quyền vị trí</string>
     <string name="open_app_settings">Mở cài đặt để cấp quyền</string>
+    <string-array name="weekdays">
+        <item>Thứ hai</item>
+        <item>Thứ ba</item>
+        <item>Thứ tư</item>
+        <item>Thứ năm</item>
+        <item>Thứ sáu</item>
+        <item>Thứ bảy</item>
+        <item>Chủ nhật</item>
+    </string-array>
+    <string name="date_pattern">dd/MM/yyyy</string>
+    <string name="date_format">%1$s, %2$s</string>
+    <string name="lunar_date">%1$02d/%2$02d Âm lịch</string>
+    <string name="lunar_date_leap">%1$02d/%2$02d nhuận Âm lịch</string>
+    <string name="lunar_year">(%1$s)</string>
+    <string name="lunar_day">Ngày %1$s</string>
+    <string name="lunar_month">Tháng %1$s</string>
 </resources>

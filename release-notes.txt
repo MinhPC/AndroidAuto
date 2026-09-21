@@ -1,1 +1,1 @@
-Nửa trái màn hình chính hiển thị xe Honda Civic đen chạy trên đường: xe chạy thì đường chuyển động theo tốc độ GPS, xe dừng thì đứng im. Ứng dụng chuyển sang nửa phải.
+Thêm thanh ứng dụng ghim ở cuối nửa phải (chọn tối đa 5 app trong Cài đặt), hai nút "Về nhà" và "Đến cơ quan" mở thẳng Waze hoặc Google Maps để dẫn đường, và giao diện sáng/tối tự đổi theo giờ mặt trời mọc/lặn tại vị trí GPS. Nút Cài đặt nằm ở góc dưới nửa trái, dùng để nhập địa chỉ nhà/cơ quan, chọn app dẫn đường và chế độ sáng/tối.

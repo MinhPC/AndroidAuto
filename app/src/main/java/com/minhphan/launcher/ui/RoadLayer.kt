@@ -10,48 +10,86 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.res.imageResource
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import com.minhphan.launcher.R
+import kotlin.math.max
+import kotlin.math.min
+
+/** Where the road's vanishing point sits on the screen, as a fraction of the scene height (if the photo allows it). */
+const val HORIZON_FRACTION = 0.46f
+
+// The photo (road_scene.webp, Pexels photo 1955134, free to use) was measured once: pixel position of the road's vanishing point, and how fast the
+// road widens below it (half the road width, in pixels, per pixel below the vanishing point). Its own painted
+// dashes (the centre ones and the ones at the left edge) were painted out, so the dashes drawn here are the
+// only ones and can move. The fork where the road crests the horizon was also closed into one road.
+// The untouched photo is kept in art-source/road_scene_original.webp.
+private const val IMAGE_WIDTH = 1000
+private const val IMAGE_HEIGHT = 1500
+private const val VANISH_X = 522.14f
+private const val VANISH_Y = 779.29f
+private const val ROAD_SLOPE = 2.142f
+
+/** The painted lane lines are 2% of the road width, like the real centre line in the photo. */
+private const val LINE_WIDTH_PER_PX = 0.089f
+
+/** The road is split into three lanes; the car drives in the middle one and the two lane lines flank it. */
+private const val LANE_LINE_OFFSET = 1f / 3f
+private const val CAR_LANE_FILL = 0.72f
+
+private const val Z_NEAR = 0.85f
+private const val Z_FAR = 14f
+private const val DASH_PERIOD = 0.6f
+private const val DASH_LENGTH = 0.3f
+private const val Z_PER_KMH_PER_SECOND = 0.012f
+
+/** Multiplied over the photo (and the car) at night: dark and a little blue. */
+internal val NightTint = Color(0xFF56658F)
 
 /**
- * Both repeating things on the road (the dashes and the tree spacing) divide this, so the scroll offset can
- * wrap around without a visible jump.
+ * How the road photo is placed in a scene of the given size: scaled to cover it, with the road's centre in the
+ * middle and its vanishing point at [HORIZON_FRACTION] of the height when possible. The car layer uses the same
+ * numbers, so the car sits on the road in perspective.
  */
-private const val SCROLL_PERIOD_PX = 320f
-private const val DASH_PX = 80f
-private const val PX_PER_KMH_PER_SECOND = 7f
-private const val ROAD_WIDTH_FRACTION = 0.8f
-private const val LINE_WIDTH_PX = 6f
+internal class SceneGeometry(val width: Float, val height: Float) {
+    val scale = max(width / (2f * min(VANISH_X, IMAGE_WIDTH - VANISH_X)), height / IMAGE_HEIGHT)
+    val left = width / 2f - VANISH_X * scale
+    val top = (height * HORIZON_FRACTION - VANISH_Y * scale).coerceIn(height - IMAGE_HEIGHT * scale, 0f)
+    val vanishX = width / 2f
+    val vanishY = top + VANISH_Y * scale
 
-private class RoadPalette(
-    val roadside: Color,
-    val asphalt: Color,
-    val edge: Color,
-    val dash: Color,
-    val treeDark: Color,
-    val treeLight: Color,
-)
+    /** Screen y at depth z, where z = 1 is the bottom edge of the scene and larger z is further away. */
+    fun yAt(z: Float) = vanishY + (height - vanishY) / z
 
-private val DayPalette = RoadPalette(
-    roadside = Color(0xFF5E8F50), asphalt = Color(0xFF3C4149), edge = Color(0xFFECECEC),
-    dash = Color(0xFFF2F2F2), treeDark = Color(0xFF2C5F30), treeLight = Color(0xFF3F8443),
-)
-private val NightPalette = RoadPalette(
-    roadside = Color(0xFF0E1B13), asphalt = Color(0xFF1B1F26), edge = Color(0xFF9AA0A6),
-    dash = Color(0xFFB4B9BF), treeDark = Color(0xFF0A2314), treeLight = Color(0xFF123222),
-)
+    /** Screen x of a point at [side] (-1..1, the road's left edge to its right edge) and depth z. */
+    fun xAt(side: Float, z: Float) = vanishX + side * ROAD_SLOPE * (height - vanishY) / z
+
+    /** Width of the car so it fills [CAR_LANE_FILL] of the middle lane at the y where its bottom edge sits. */
+    fun carWidth(maxFraction: Float): Float {
+        val width = min(width * maxFraction, (height * 0.92f - vanishY) * CAR_LANE_FILL * (2f / 3f) * ROAD_SLOPE)
+        return max(width, 1f)
+    }
+
+    fun carBottom(carWidth: Float) = vanishY + carWidth / (CAR_LANE_FILL * (2f / 3f) * ROAD_SLOPE)
+}
 
 /**
- * A straight three-lane road seen from above, scrolling downwards (the car heads up). [speedKmh] is read
- * every frame; the frame loop runs only while [active], so a parked car costs no animation work at all.
+ * The road photo with the lane lines painted over it in perspective; the dashes stream towards the viewer at
+ * [speedKmh]. The speed is read every frame and the frame loop runs only while [active], so a parked car costs
+ * no animation work at all.
  */
 @Composable
 fun RoadLayer(speedKmh: () -> Float, active: Boolean, dark: Boolean, modifier: Modifier = Modifier) {
     var scroll by remember { mutableFloatStateOf(0f) }
     val currentSpeed by rememberUpdatedState(speedKmh)
+    val photo = ImageBitmap.imageResource(R.drawable.road_scene)
 
     LaunchedEffect(active) {
         if (!active) return@LaunchedEffect
@@ -60,42 +98,53 @@ fun RoadLayer(speedKmh: () -> Float, active: Boolean, dark: Boolean, modifier: M
             val now = withFrameNanos { it }
             val seconds = (now - last) / 1_000_000_000f
             last = now
-            scroll = (scroll + currentSpeed() * PX_PER_KMH_PER_SECOND * seconds) % SCROLL_PERIOD_PX
+            scroll = (scroll + currentSpeed() * Z_PER_KMH_PER_SECOND * seconds) % DASH_PERIOD
         }
     }
 
-    val palette = if (dark) NightPalette else DayPalette
     Canvas(modifier) {
         // Reading `scroll` here (not in composition) means each frame only redraws, it does not recompose.
         val offset = scroll
-        val w = size.width
-        val h = size.height
-        val roadW = w * ROAD_WIDTH_FRACTION
-        val left = (w - roadW) / 2f
-        val right = left + roadW
+        val g = SceneGeometry(size.width, size.height)
+        drawImage(
+            photo,
+            dstOffset = IntOffset(g.left.toInt(), g.top.toInt()),
+            dstSize = IntSize((IMAGE_WIDTH * g.scale).toInt() + 1, (IMAGE_HEIGHT * g.scale).toInt() + 1),
+            filterQuality = FilterQuality.High,
+        )
 
-        drawRect(palette.roadside)
-        drawRect(palette.asphalt, Offset(left, 0f), Size(roadW, h))
-        drawRect(palette.edge, Offset(left + 6f, 0f), Size(LINE_WIDTH_PX, h))
-        drawRect(palette.edge, Offset(right - 6f - LINE_WIDTH_PX, 0f), Size(LINE_WIDTH_PX, h))
-
-        // Drawn bottom-to-top: a growing dash phase moves the pattern towards the start, i.e. downwards.
-        val dashes = PathEffect.dashPathEffect(floatArrayOf(DASH_PX, DASH_PX), offset)
-        for (lane in 1..2) {
-            val x = left + roadW * lane / 3f
-            drawLine(palette.dash, Offset(x, h), Offset(x, 0f), strokeWidth = LINE_WIDTH_PX, pathEffect = dashes)
+        // The dash pattern moves towards the viewer: every dash sits at n * period minus the scroll.
+        // Worn paint: not pure white. (A fainter, wider copy under each dash used to soften the edges, but it
+        // showed as a ghost outline around every dash, so the dashes are drawn once, with anti-aliased edges.)
+        val core = Color(0xFFF0F0EA).copy(alpha = 0.80f)
+        var n = 0
+        while (true) {
+            val start = n * DASH_PERIOD - offset
+            if (start >= Z_FAR) break
+            val z0 = max(start, Z_NEAR)
+            val z1 = start + DASH_LENGTH
+            if (z1 > Z_NEAR) {
+                for (side in floatArrayOf(-LANE_LINE_OFFSET, LANE_LINE_OFFSET)) {
+                    drawPath(dash(g, side, z0, z1), core)
+                }
+            }
+            n++
         }
 
-        // Trees at the roadside, two per period so the edge never looks empty.
-        for (k in -1..(h / SCROLL_PERIOD_PX).toInt() + 1) {
-            val y = k * SCROLL_PERIOD_PX + offset
-            drawTree(palette, Offset(left / 2f, y), radius = 20f)
-            drawTree(palette, Offset(right + left / 2f, y + SCROLL_PERIOD_PX / 2f), radius = 24f)
-        }
+        // Darker for the night, and soft shades at the top and bottom so the text reads on any photo.
+        if (dark) drawRect(NightTint, blendMode = BlendMode.Modulate)
+        drawRect(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.35f), Color.Transparent), startY = 0f, endY = size.height * 0.4f))
+        drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.35f)), startY = size.height * 0.8f, endY = size.height))
     }
 }
 
-private fun DrawScope.drawTree(palette: RoadPalette, center: Offset, radius: Float) {
-    drawCircle(palette.treeDark, radius + 3f, center)
-    drawCircle(palette.treeLight, radius, center)
+/** One painted dash between depths [z0] and [z1] (z0 < z1) on the lane line at [side]; it narrows with distance. */
+private fun dash(g: SceneGeometry, side: Float, z0: Float, z1: Float) = Path().apply {
+    val half0 = LINE_WIDTH_PER_PX * (g.height - g.vanishY) / z0 / 2f
+    val half1 = LINE_WIDTH_PER_PX * (g.height - g.vanishY) / z1 / 2f
+    moveTo(g.xAt(side, z0) - half0, g.yAt(z0))
+    lineTo(g.xAt(side, z0) + half0, g.yAt(z0))
+    lineTo(g.xAt(side, z1) + half1, g.yAt(z1))
+    lineTo(g.xAt(side, z1) - half1, g.yAt(z1))
+    close()
 }

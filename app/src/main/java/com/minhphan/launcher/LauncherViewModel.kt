@@ -3,11 +3,16 @@ package com.minhphan.launcher
 import android.app.Application
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Rect
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.minhphan.launcher.data.AppInfo
 import com.minhphan.launcher.data.AppRepository
 import com.minhphan.launcher.data.FavoritesStore
+import com.minhphan.launcher.data.LauncherSettings
+import com.minhphan.launcher.data.NavigatorChoice
+import com.minhphan.launcher.data.SettingsStore
+import com.minhphan.launcher.data.ThemeMode
 import com.minhphan.launcher.diagnostics.DiagnosticLine
 import com.minhphan.launcher.diagnostics.runConnectivityTest
 import com.minhphan.launcher.update.UpdateInfo
@@ -28,9 +33,12 @@ import kotlinx.coroutines.launch
 class LauncherViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = AppRepository(application)
     private val store = FavoritesStore(application)
+    private val settingsStore = SettingsStore(application)
     private val updates = UpdateManager(application, viewModelScope)
 
     val versionName: String = updates.currentVersionName
+
+    val settings: StateFlow<LauncherSettings> = settingsStore.settings
     val updateState: StateFlow<UpdateState> = updates.state
 
     val apps: StateFlow<List<AppInfo>> = repository.changes()
@@ -42,6 +50,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         val byKey = apps.associateBy { it.key }
         keys.orEmpty().mapNotNull(byKey::get)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** Installed map apps (Google Maps first), read from the launcher's own app list. */
+    val mapApps: StateFlow<List<AppInfo>> = apps
+        .map { list -> MAP_PACKAGES.mapNotNull { pkg -> list.firstOrNull { it.packageName == pkg } } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private val _connectivity = MutableStateFlow<List<DiagnosticLine>>(emptyList())
 
@@ -76,6 +89,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun installUpdate(info: UpdateInfo) = updates.install(info)
 
+    fun launchInBounds(app: AppInfo, bounds: Rect) = repository.launchInBounds(app, bounds)
+
     fun testConnectivity() {
         if (_connectivityRunning.value) return
         viewModelScope.launch {
@@ -86,6 +101,14 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun openAppInfo(app: AppInfo) = repository.openAppInfo(app)
+
+    fun setHomeAddress(value: String) = settingsStore.setHomeAddress(value)
+
+    fun setWorkAddress(value: String) = settingsStore.setWorkAddress(value)
+
+    fun setNavigator(value: NavigatorChoice) = settingsStore.setNavigator(value)
+
+    fun setTheme(value: ThemeMode) = settingsStore.setTheme(value)
 
     fun toggleFavorite(app: AppInfo) {
         val current = store.keys.value.orEmpty()
@@ -111,6 +134,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     companion object {
-        const val MAX_FAVORITES = 4
+        const val MAX_FAVORITES = 5
+        private val MAP_PACKAGES = listOf("com.google.android.apps.maps", "com.waze")
     }
 }
