@@ -32,5 +32,13 @@ class LauncherApplication : Application() {
     val cloud by lazy { CloudAccount(this) }
     val driveLog by lazy { DriveLog(this) }
     val syncStatus = SyncStatus()
-    val tripUploader by lazy { TripUploader(this, cloud, syncStatus) }
+    /** Hands every fill-up Firebase has not been given yet over to it: all of them for a driver who was signed out when they were logged. */
+    fun uploadPendingRefuels() {
+        val sent = driveLog.pendingRefuels().filter { tripUploader.saveRefuel(it) }.map { it.id }
+        if (sent.isNotEmpty()) driveLog.refuelsSent(sent)
+    }
+
+    val tripUploader by lazy {
+        TripUploader(this, cloud, syncStatus) { driveLog.fuelEstimate(settingsStore.settings.value.tankLiters) }
+    }
 }

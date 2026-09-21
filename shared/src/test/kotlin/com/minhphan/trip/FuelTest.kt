@@ -85,4 +85,54 @@ class FuelTest {
         assertNull(FuelBook(baselineKm = 50.0).suggestedKm(50.0))
         assertEquals(30.0, FuelBook(baselineKm = 20.0).suggestedKm(50.0)!!, 0.0)
     }
+
+    @Test
+    fun theTankIsThoughtFullRightAfterAFullFillUpAndEmptiesAtTheAverageEconomy() {
+        val book = FuelBook()
+            .record(1, 40.0, 0, true, 0.0)
+            .record(2, 35.0, 0, true, 500.0) // 500 km on 35 L: 14.29 km/L
+        assertEquals(500.0 / 35.0, book.averageKmPerLiter!!, 0.001)
+
+        val fresh = book.estimate(odometerKm = 500.0, tankLiters = 50.0)!!
+        assertEquals(50.0, fresh.liters, 0.001)
+        assertEquals(100, fresh.percent)
+        assertEquals(50.0 * 500.0 / 35.0, fresh.rangeKm, 0.01)
+        assertEquals(false, fresh.assumed)
+
+        val later = book.estimate(odometerKm = 500.0 + 300.0, tankLiters = 50.0)!! // 300 km at 14.29 km/L is 21 L
+        assertEquals(50.0 - 300.0 / (500.0 / 35.0), later.liters, 0.001)
+        assertEquals(58, later.percent)
+        assertEquals(later.liters * (500.0 / 35.0), later.rangeKm, 0.01)
+    }
+
+    @Test
+    fun aTypicalEconomyStandsInUntilTheDriversOwnIsKnownAndSaysSo() {
+        val book = FuelBook().record(1, 40.0, 0, true, 100.0)
+        val estimate = book.estimate(odometerKm = 220.0, tankLiters = 50.0)!!
+
+        assertEquals(true, estimate.assumed)
+        assertEquals(DEFAULT_KM_PER_LITER, estimate.kmPerLiter, 0.0)
+        assertEquals(40.0, estimate.liters, 0.001) // 120 km at 12 km/L is 10 L
+        assertEquals(480.0, estimate.rangeKm, 0.001)
+    }
+
+    @Test
+    fun partFillUpsPutFuelBackAndTheTankNeverHoldsMoreThanItsSize() {
+        // Economy 12 km/L; 20 L were added by part fill-ups since the last full one.
+        val book = FuelBook(baselineKm = 0.0, trackedKm = 120.0, trackedLiters = 10.0, partialLiters = 20.0)
+
+        assertEquals(40.0, book.estimate(odometerKm = 360.0, tankLiters = 50.0)!!.liters, 0.001) // 50 - 30 + 20
+        assertEquals(50.0, book.estimate(odometerKm = 120.0, tankLiters = 50.0)!!.liters, 0.001) // 50 - 10 + 20, capped
+    }
+
+    @Test
+    fun noFullFillUpMeansNoEstimateAndTheTankRunsDryAtZero() {
+        assertNull(FuelBook().estimate(100.0, 50.0))
+        assertNull(FuelBook(baselineKm = 0.0).estimate(100.0, 0.0))
+
+        val dry = FuelBook(baselineKm = 0.0, trackedKm = 120.0, trackedLiters = 10.0).estimate(odometerKm = 5_000.0, tankLiters = 50.0)!!
+        assertEquals(0.0, dry.liters, 0.0)
+        assertEquals(0.0, dry.rangeKm, 0.0)
+        assertEquals(0, dry.percent)
+    }
 }

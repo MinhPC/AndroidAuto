@@ -8,17 +8,12 @@ import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
-import com.google.firebase.firestore.Source
 import com.minhphan.cloud.CloudAccount
-import com.minhphan.trip.LiveStatus
+import com.minhphan.trip.FuelEstimate
 import com.minhphan.trip.Refuel
 import com.minhphan.trip.Schema
 import com.minhphan.trip.TripEvent
 import com.minhphan.trip.toMap
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.withTimeout
 
 /**
  * Writes what the [com.minhphan.trip.TripTracker] produces to the signed-in user's part of Firestore. Firestore keeps
@@ -28,16 +23,23 @@ import kotlinx.coroutines.withTimeout
  * Day totals are sent as increments, which the server adds up: a total is never replaced by a smaller number,
  * whatever this device has forgotten (cleared data, a reinstall) and however many devices write.
  */
-class TripUploader(context: Context, private val account: CloudAccount, private val status: SyncStatus) {
+class TripUploader(
+    context: Context,
+    private val account: CloudAccount,
+    private val status: SyncStatus,
+    /** How much fuel is thought to be left now; sent with the live position. */
+    private val fuelEstimate: () -> FuelEstimate? = { null },
+) {
     private val db: FirebaseFirestore? =
         if (FirebaseApp.getApps(context).isEmpty()) null else FirebaseFirestore.getInstance()
 
     /** The highest speed already sent for each day: the server cannot take a maximum, so only a higher one is sent. */
     private val sentMaxSpeed = HashMap<String, Float>()
 
-    fun handle(events: List<TripEvent>) {
-        val db = db ?: return
-        val uid = account.uid ?: return
+    /** Sends what the tracker produced; returns the account it went to, or null when nothing was sent (no account, no Firebase). */
+    fun handle(events: List<TripEvent>): String? {
+        val db = db ?: return null
+        val uid = account.uid ?: return null
         val user = db.collection(Schema.USERS).document(uid)
         for (event in events) {
             when (event) {
@@ -58,39 +60,44 @@ class TripUploader(context: Context, private val account: CloudAccount, private 
                     }
                     user.collection(Schema.DAYS).document(event.day).track { set(total, SetOptions.merge()) }
                 }
-                is TripEvent.Live -> user.collection(Schema.LIVE).document(Schema.LIVE_DOC).write(event.status.toMap())
+                is TripEvent.Live -> user.collection(Schema.LIVE).document(Schema.LIVE_DOC).write(event.status.copy(fuel = fuelEstimate()).toMap())
             }
         }
-    }
-
-    /** Sends a fill-up. Firestore keeps it if there is no connection and sends it later; nothing is sent while nobody is signed in. */
-    fun saveRefuel(refuel: Refuel) {
-        val db = db ?: return
-        val uid = account.uid ?: return
-        db.collection(Schema.USERS).document(uid).collection(Schema.REFUELS).document(refuel.id).write(refuel.toMap())
+        return uid
     }
 
     /**
-     * Writes [live] as the car's live position, marked as a test, and reads it back from the server. That proves the
-     * whole path: the sign-in, the rules for writing, the connection and the rules for reading.
+     * Sends the fuel estimate alone, merged into the live document, so that it shows up at once after a fill-up
+     * instead of with the next position. Nothing is sent while nobody is signed in.
      */
-    suspend fun sendTest(live: LiveStatus): TestResult {
-        val db = db ?: return TestResult.Failed("Firebase is not set up in this build")
-        val uid = account.uid ?: return TestResult.Failed("Not signed in")
-        val document = db.collection(Schema.USERS).document(uid).collection(Schema.LIVE).document(Schema.LIVE_DOC)
-        return try {
-            withTimeout(TEST_TIMEOUT_MS) {
-                document.set(live.toMap() + ("test" to true)).await()
-                if (document.get(Source.SERVER).await().exists()) TestResult.Confirmed
-                else TestResult.Failed("Written, but not found when read back")
-            }
-        } catch (_: TimeoutCancellationException) {
-            TestResult.NotConfirmed
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            TestResult.Failed(e.message ?: e.javaClass.simpleName)
-        }
+    fun saveFuel(estimate: FuelEstimate?) {
+        val db = db ?: return
+        val uid = account.uid ?: return
+        estimate ?: return
+        val fields = mapOf("fuel" to estimate.toMap())
+        db.collection(Schema.USERS).document(uid).collection(Schema.LIVE).document(Schema.LIVE_DOC).track { set(fields, SetOptions.merge()) }
+    }
+
+    /**
+     * Hands a fill-up to Firestore, which keeps it if there is no connection and sends it later; true when it was
+     * handed over, false while nobody is signed in (the caller keeps it and tries again). Sending it twice is harmless.
+     */
+    fun saveRefuel(refuel: Refuel): Boolean {
+        val db = db ?: return false
+        val uid = account.uid ?: return false
+        db.collection(Schema.USERS).document(uid).collection(Schema.REFUELS).document(refuel.id).write(refuel.toMap())
+        return true
+    }
+
+    /**
+     * Marks a trip as over that a run of the app left "ongoing" when it was killed; true when the write was handed to
+     * Firestore. It is only done for the account the trip belongs to ([uid]), so no other account gets a stub of it.
+     */
+    fun closeTrip(uid: String, tripId: String): Boolean {
+        val db = db ?: return false
+        if (account.uid != uid) return false
+        db.collection(Schema.USERS).document(uid).collection(Schema.TRIPS).document(tripId).track { set(mapOf("ongoing" to false), SetOptions.merge()) }
+        return true
     }
 
     private fun DocumentReference.write(data: Map<String, Any?>) = track { set(data) }
@@ -108,20 +115,5 @@ class TripUploader(context: Context, private val account: CloudAccount, private 
 
     private companion object {
         const val TAG = "TripUploader"
-
-        /** Firestore keeps a write it cannot send and never answers, so a test must not wait for ever. */
-        const val TEST_TIMEOUT_MS = 10_000L
     }
-}
-
-/** How a test send ended. */
-sealed interface TestResult {
-    /** The server has the data and it can be read back. */
-    data object Confirmed : TestResult
-
-    /** The server did not answer in time; Firestore keeps the write and sends it when there is a connection. */
-    data object NotConfirmed : TestResult
-
-    /** Firestore refused, and says why (for instance PERMISSION_DENIED when the rules are not published). */
-    data class Failed(val reason: String) : TestResult
 }

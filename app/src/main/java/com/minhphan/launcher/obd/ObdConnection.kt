@@ -29,7 +29,8 @@ enum class ObdProblem { NoPermission, BluetoothOff, NoAdapter, CannotConnect, No
  * The flow says nothing while it waits, so `lastExpiresInMs` tells the screen when to stop showing `last` itself.
  */
 sealed interface ObdState {
-    data class Connecting(val last: ObdValues? = null, val lastExpiresInMs: Long = 0) : ObdState
+    /** [carSilent]: the adapter answers but the car does not (ignition off), as opposed to a link still being made or lost. */
+    data class Connecting(val last: ObdValues? = null, val lastExpiresInMs: Long = 0, val carSilent: Boolean = false) : ObdState
 
     data class Connected(val values: ObdValues) : ObdState
 
@@ -53,6 +54,15 @@ private const val RESET_TIMEOUT_MS = 5_000L
 /** Finding the protocol the car speaks can take several seconds, the first time. */
 private const val PROBE_TIMEOUT_MS = 15_000L
 private const val UNSUPPORTED_AFTER_MISSES = 3
+
+/**
+ * A value the car lists as supported but does not answer (a cold engine that has not yet gone into closed loop
+ * gives no fuel trim, for instance) is asked again after this many rounds instead of being given up on.
+ */
+private const val SILENT_VALUE_COOLDOWN_ROUNDS = 20
+
+/** The support bitmaps are read for PIDs 01 to 60: 0100, 0120 and 0140. */
+private const val LAST_SUPPORT_BLOCK = 0x40
 private const val SILENT_ROUNDS_BEFORE_NO_VEHICLE = 5
 private const val VOLTAGE_EVERY_ROUNDS = 5
 
@@ -69,7 +79,7 @@ private val SLOW_PIDS = listOf(Pid.Coolant, Pid.Load, Pid.Throttle, Pid.Intake, 
  * whenever the link drops or the car is switched off it starts over after a few seconds. Cancelling the
  * collector closes the connection.
  */
-fun obdStates(context: Context, address: String, permitted: Boolean): Flow<ObdState> = flow {
+fun obdStates(context: Context, address: String, permitted: Boolean, extraPids: () -> Set<Pid> = { emptySet() }): Flow<ObdState> = flow {
     val simulated = BuildConfig.DEBUG && address == SIMULATED_ADDRESS
     if (!simulated && !permitted) {
         emit(ObdState.Problem(ObdProblem.NoPermission))
@@ -81,7 +91,7 @@ fun obdStates(context: Context, address: String, permitted: Boolean): Flow<ObdSt
         val problem = try {
             val link = if (simulated) SimulatedElmLink() else openBluetoothLink(context, address)
             link.use {
-                runSession(it) { state ->
+                runSession(it, extraPids) { state ->
                     if (state is ObdState.Connected) recent.record(state.values)
                     emit(state)
                 }
@@ -178,13 +188,14 @@ private class BluetoothElmLink(private val socket: BluetoothSocket) : ElmLink {
  * A car that is switched off does not drop the link: the adapter stays connected and is asked again every few
  * seconds, because reconnecting over and over can wedge cheap adapters. Returns only when the link breaks.
  */
-private suspend fun runSession(link: ElmLink, publish: suspend (ObdState) -> Unit): ObdProblem {
+private suspend fun runSession(link: ElmLink, extraPids: () -> Set<Pid>, publish: suspend (ObdState) -> Unit): ObdProblem {
     try {
         link.send("ATZ", RESET_TIMEOUT_MS)
         INIT_COMMANDS.forEach { link.send(it, COMMAND_TIMEOUT_MS) }
         while (true) {
             // "0100" asks which values the car has; the answer proves the car is awake and picks the protocol.
-            if (parsePidResponse(link.send("0100", PROBE_TIMEOUT_MS), 0x00, 4) != null) readUntilSilent(link, publish)
+            val probe = link.send("0100", PROBE_TIMEOUT_MS)
+            if (parsePidResponse(probe, 0x00, 4) != null) readUntilSilent(link, readSupported(link, probe), extraPids, publish)
             publish(ObdState.Problem(ObdProblem.NoVehicle))
             delay(RETRY_MS)
         }
@@ -193,17 +204,54 @@ private suspend fun runSession(link: ElmLink, publish: suspend (ObdState) -> Uni
     }
 }
 
-/** Reads the values round after round, publishing each round, until the car stops answering. */
-internal suspend fun readUntilSilent(link: ElmLink, publish: suspend (ObdState) -> Unit) {
-    var values = ObdValues(voltage = parseVoltage(link.send("ATRV", COMMAND_TIMEOUT_MS)))
+/**
+ * Which PIDs the car has, from the answer to 0100 ([first]) and, while a bitmap says there is more, to 0120 and 0140.
+ * Every ECU that answered counts. A block that does not come is simply not known: what was read so far stands.
+ */
+internal suspend fun readSupported(link: ElmLink, first: String): Set<Int> {
+    val supported = HashSet<Int>()
+    var base = 0x00
+    var answer = first
+    while (true) {
+        parseAllPidResponses(answer, base, 4).forEach { supported += decodeSupported(base, it) }
+        val next = base + 0x20
+        if (next !in supported || next > LAST_SUPPORT_BLOCK) break
+        answer = try {
+            link.send("01%02X".format(next), COMMAND_TIMEOUT_MS)
+        } catch (_: IOException) {
+            break
+        }
+        base = next
+    }
+    return supported
+}
+
+/**
+ * Reads the values round after round, publishing each round, until the car stops answering. With [supported] (the
+ * PIDs the car listed) only those are asked, and one that stays silent is asked again later; without it, one that
+ * stays silent is given up on.
+ */
+internal suspend fun readUntilSilent(
+    link: ElmLink,
+    supported: Set<Int>? = null,
+    extraPids: () -> Set<Pid> = { emptySet() },
+    publish: suspend (ObdState) -> Unit,
+) {
+    var values = ObdValues(voltage = parseVoltage(link.send("ATRV", COMMAND_TIMEOUT_MS)), supported = supported)
     publish(ObdState.Connected(values))
 
     val misses = HashMap<Pid, Int>()
     val unsupported = HashSet<Pid>()
+    val cooldown = HashMap<Pid, Int>()
     var silentRounds = 0
     var round = 0
     while (true) {
-        val asked = (FAST_PIDS + SLOW_PIDS[round % SLOW_PIDS.size]).filter { it !in unsupported }
+        cooldown.replaceAll { _, rounds -> rounds - 1 }
+        // The values that are always read, and the others the driver has put on Home; one of them is asked per round.
+        val slow = (SLOW_PIDS + extraPids().filter { it !in SLOW_PIDS && it !in FAST_PIDS })
+            .filter { supported == null || it.code in supported }
+        val asked = (FAST_PIDS + listOfNotNull(slow.getOrNull(round % slow.size.coerceAtLeast(1))))
+            .filter { it !in unsupported && (cooldown[it] ?: 0) <= 0 }
         val missed = ArrayList<Pid>()
         for (pid in asked) {
             val value = parsePid(link.send("01%02X".format(pid.code), COMMAND_TIMEOUT_MS), pid)
@@ -219,7 +267,7 @@ internal suspend fun readUntilSilent(link: ElmLink, publish: suspend (ObdState) 
             // Nothing answered: the ignition is probably off, not that these values are unsupported. The readings
             // are no longer confirmed, so they are shown as the last ones (dimmed), not as live.
             if (++silentRounds >= SILENT_ROUNDS_BEFORE_NO_VEHICLE) return
-            publish(ObdState.Connecting(values, STALE_AFTER_MS))
+            publish(ObdState.Connecting(values, STALE_AFTER_MS, carSilent = true))
             round++
             continue
         } else {
@@ -229,7 +277,9 @@ internal suspend fun readUntilSilent(link: ElmLink, publish: suspend (ObdState) 
                 misses[pid] = count
                 if (count >= UNSUPPORTED_AFTER_MISSES) {
                     // Speed and rpm are on every car and are what the eye follows: keep asking, whatever the slow ones do.
-                    if (pid !in FAST_PIDS) unsupported += pid
+                    if (pid !in FAST_PIDS) {
+                        if (supported == null) unsupported += pid else cooldown[pid] = SILENT_VALUE_COOLDOWN_ROUNDS
+                    }
                     values = values.with(pid, null)
                 }
             }

@@ -49,11 +49,9 @@ Không có file này, launcher vẫn build và chạy, chỉ là phần đồng 
 2. Trên màn hình xe: **Cài đặt → Hành trình & đồng bộ → Đăng nhập Google** bằng tài khoản đã bật ở bước 2.
    (Cần Google Play Services trên màn hình xe.)
 3. Cho phép quyền vị trí khi launcher hỏi. Khi đang ghi, có thông báo nhỏ "Đang ghi hành trình".
-4. **Thử kết nối trước khi lái**: bấm **Gửi thử lên Firebase** ngay dưới công tắc. Launcher gửi thông số động cơ (thật
-   nếu bộ đọc OBD đang kết nối, không thì mẫu) vào `users/<uid>/live/car` rồi đọc lại từ server, và báo kết quả trên
-   màn hình: thành công, chưa được xác nhận sau 10 giây (kiểm tra mạng), hoặc bị từ chối kèm lý do (thường là
-   `PERMISSION_DENIED` khi rules chưa được Publish). Tài liệu có thêm trường `test: true`; Home Assistant sẽ hiện các
-   cảm biến động cơ từ đó. Các dòng trạng thái bên trên cho biết GPS và Firebase đang ở đâu khi lái thật.
+4. **Kiểm tra khi lái**: các dòng trạng thái ngay dưới công tắc **Ghi và gửi hành trình** cho biết dịch vụ có đang
+   chạy không, lần nhận GPS cuối, lần Firebase xác nhận cuối và lý do khi Firebase từ chối (thường là
+   `PERMISSION_DENIED` khi rules chưa được Publish).
 
 ## 6. Cài integration cho Home Assistant
 
@@ -67,7 +65,7 @@ integration **Car Trips** trong Home Assistant.
 users/{uid}/days/{yyyy-MM-dd}             tổng km, số chuyến, thời gian lái, tốc độ tối đa của ngày
 users/{uid}/trips/{tripId}                một chuyến: giờ đi/đến, km, tốc độ, nhiệt độ nước/khí nạp, điện áp
 users/{uid}/trips/{tripId}/chunks/{seq}   lộ trình: điểm GPS 5 giây một lần kèm thông số động cơ
-users/{uid}/live/car                      vị trí, tốc độ và thông số động cơ gần nhất của xe
+users/{uid}/live/car                      vị trí, tốc độ, thông số động cơ và xăng còn lại (ước tính) của xe
 users/{uid}/refuels/{id}                  một lần đổ xăng: số lít, số tiền, đầy bình hay không, km và km/lít
 ```
 
@@ -79,6 +77,11 @@ users/{uid}/refuels/{id}                  một lần đổ xăng: số lít, s�
   Chuyến qua nửa đêm được chia km cho hai ngày.
 - **Tổng ngày** được gửi dạng cộng dồn (`FieldValue.increment`) nên xoá dữ liệu app hay dùng hai thiết bị cũng không
   làm mất số km đã có trên server.
+- **Chuyến kết thúc thông minh**: nếu bộ đọc OBD đang kết nối, xe dừng mà động cơ báo 0 vòng/phút (hoặc bộ đọc ngừng
+  trả lời vì đã tắt khoá) trong 20 giây thì chuyến kết thúc ngay, không phải chờ 5 phút. Xe đứng nhưng động cơ vẫn nổ
+  (kẹt xe, chờ trả đồ) thì chuyến được giữ mở tới 15 phút. Không có bộ đọc OBD thì vẫn kết thúc sau 5 phút đứng yên.
+- **Chuyến bị bỏ dở**: nếu màn hình xe tắt cùng lúc với xe (app bị tắt đột ngột), lần mở sau launcher đánh dấu chuyến đó
+  là đã kết thúc trên Firebase thay vì để "đang đi" mãi.
 - **Không có mạng**: Firestore giữ dữ liệu trên màn hình xe và tự gửi khi có mạng, kể cả sau khi khởi động lại.
 - **Ước lượng chi phí**: mỗi phút lái tốn khoảng 7 lần ghi; 2 giờ mỗi ngày là khoảng 850 lần ghi, thấp hơn nhiều so với
   hạn mức miễn phí (20.000 lần ghi/ngày, 50.000 lần đọc/ngày). Home Assistant đọc 4 lần mỗi lượt, cộng các ngày đã qua trong năm mỗi giờ một lần (30 giây
@@ -99,7 +102,14 @@ bộ đếm km từ GPS do dịch vụ ghi hành trình chạy, nên cần bật
   đầy đầu tiên chỉ làm mốc; km/lít có từ lần đổ đầy thứ hai. Số km lấy từ GPS và có thể sửa ngay trong khung nhập nếu
   khác đồng hồ km của xe. Mỗi lần đổ được lưu vào `users/{uid}/refuels/{id}` và hiện thành cảm biến trong Home
   Assistant (km/lít, trung bình, giá mỗi lít, tiền xăng tháng).
-- Đổ xăng khi chưa đăng nhập Google chỉ lưu trên màn hình xe, không gửi Firebase.
+- **Xăng còn lại và quãng đường còn chạy được** (ô Đổ xăng và cảm biến `sensor.car_estimated_fuel_*`): xe không cho
+  đọc mức xăng qua OBD, nên launcher **ước tính**: bình đầy ở lần đổ đầy gần nhất, rồi trừ dần theo km đã chạy chia
+  km/lít trung bình (cộng thêm xăng của các lần đổ dở dang). Quãng đường còn lại = xăng còn lại × km/lít. Trước khi
+  có km/lít đo được (cần đổ đầy hai lần) thì tạm dùng 12 km/lít và ghi rõ "tạm tính". Đặt **dung tích bình** ở
+  Cài đặt → Nhiên liệu (mặc định 50 lít, đúng với Civic đời 8). Ô đổi sang màu vàng khi còn dưới 20% và đỏ dưới 10%.
+  Đây là số ước tính, nên hãy đổ đầy bình thường xuyên và nhập đúng số lít để nó bám sát thực tế; đổ đầy lại là
+  đặt lại về đúng.
+- Đổ xăng khi chưa đăng nhập Google được giữ trên màn hình xe và tự gửi lên Firebase ngay khi có tài khoản (lần bật ghi hành trình kế tiếp).
 - Bộ đếm km không nhận xe được chở đi hay lúc GPS tắt, nên nếu đã lái mà launcher không ghi (công tắc tắt) thì hãy
   sửa số km trong khung nhập.
 
@@ -109,4 +119,7 @@ bộ đếm km từ GPS do dịch vụ ghi hành trình chạy, nên cần bật
   số động cơ), nên app khác như Torque sẽ không kết nối được cùng lúc. Tắt công tắc để nhả bộ đọc.
 - Nếu tiến trình launcher bị hệ thống tắt giữa chuyến, chuyến đó dừng ở điểm cuối cùng đã gửi và chuyến mới bắt
   đầu khi launcher mở lại. Home Assistant coi một chuyến im lặng quá 10 phút là đã kết thúc.
-- Mất tối đa khoảng 1 phút lộ trình cuối nếu màn hình xe tắt đột ngột (điểm chờ gửi nằm trong bộ nhớ).
+- Khi xe dừng lại (tốc độ GPS về dưới 2 km/h), launcher gửi ngay lộ trình, chuyến và tổng ngày đang chờ, nên tắt máy
+  ngay khi tới nơi cũng không mất đoạn cuối. Dừng liên tiếp cách nhau dưới 10 giây (kẹt xe nhích từng chút) chỉ tính là một lần
+  gửi. Nếu màn hình xe tắt trong lúc xe còn đang chạy thì vẫn có thể mất tối đa khoảng 1 phút lộ trình cuối (điểm chờ
+  gửi nằm trong bộ nhớ). Dữ liệu đã giao cho Firebase được lưu trên máy và tự gửi khi có mạng, kể cả sau khi tắt máy.

@@ -20,11 +20,13 @@ import com.minhphan.launcher.LauncherApplication
 import com.minhphan.launcher.MainActivity
 import com.minhphan.launcher.R
 import com.minhphan.launcher.data.gpsLocations
+import com.minhphan.launcher.obd.ObdProblem
 import com.minhphan.launcher.obd.ObdState
 import com.minhphan.launcher.obd.ObdValues
 import com.minhphan.trip.EngineData
 import com.minhphan.trip.Fix
 import com.minhphan.trip.LatLon
+import com.minhphan.trip.TripEvent
 import com.minhphan.trip.TripTracker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -81,15 +83,28 @@ class TripRecorderService : Service() {
         val scope = CoroutineScope(SupervisorJob() + app.recorderDispatcher).also { this.scope = it }
         var engine = EngineData()
 
+        // The uploader and the tracker are used from this one thread; everything goes through here so that what was
+        // sent is also noted in the drive log.
+        fun send(events: List<TripEvent>) {
+            // Only what really went out is noted: a trip that was never sent has nothing to close.
+            uploader.handle(events)?.let { uid -> app.driveLog.noteTripEvents(events, uid) }
+        }
+
+        scope.launch {
+            // What an earlier run left behind: a trip it never got to close (the head unit went dark with the car),
+            // and fill-ups logged while nobody was signed in.
+            app.driveLog.openTrip()?.let { (uid, tripId) -> if (uploader.closeTrip(uid, tripId)) app.driveLog.clearOpenTrip() }
+            app.uploadPendingRefuels()
+        }
         scope.launch {
             app.obdHub.states.collect { state ->
-                engine = (state as? ObdState.Connected)?.values?.toEngine() ?: EngineData()
+                engine = state.toEngine()
             }
         }
         scope.launch {
             while (true) {
                 delay(TICK_MS)
-                if (lastFixTime > 0) uploader.handle(tracker.tick(gpsNow()))
+                if (lastFixTime > 0) send(tracker.tick(gpsNow()))
             }
         }
         scope.launch {
@@ -99,7 +114,7 @@ class TripRecorderService : Service() {
                 lastFixElapsed = SystemClock.elapsedRealtime()
                 app.syncStatus.fix()
                 app.driveLog.onFix(fix)
-                uploader.handle(tracker.onFix(fix, engine))
+                send(tracker.onFix(fix, engine))
             }
             // The flow ends when there is no location permission or no GPS: nothing to record.
             stopSelf()
@@ -113,7 +128,10 @@ class TripRecorderService : Service() {
             // On the same thread as the recording, after whatever step was running: the trip in progress is closed.
             val app = application as LauncherApplication
             val finishTime = gpsNow()
-            CoroutineScope(app.recorderDispatcher).launch { app.tripUploader.handle(tracker.finish(finishTime)) }
+            CoroutineScope(app.recorderDispatcher).launch {
+                val events = tracker.finish(finishTime)
+                app.tripUploader.handle(events)?.let { uid -> app.driveLog.noteTripEvents(events, uid) }
+            }
         }
         scope = null
         this.tracker = null
@@ -171,6 +189,17 @@ private fun Location.toFix() = Fix(
     accuracyM = if (hasAccuracy()) accuracy else null,
     speedKmh = if (hasSpeed()) speed * 3.6f else 0f,
 )
+
+/**
+ * What the tracker is told about the engine: what it reads; 0 rpm once the car has gone quiet (the ignition is off,
+ * which ends a stopped trip soon); and nothing while the link to the adapter is being made or is lost, which says
+ * nothing about the engine.
+ */
+internal fun ObdState.toEngine(): EngineData = when (this) {
+    is ObdState.Connected -> values.toEngine()
+    is ObdState.Connecting -> if (carSilent) EngineData(rpm = 0) else EngineData()
+    is ObdState.Problem -> if (problem == ObdProblem.NoVehicle) EngineData(rpm = 0) else EngineData()
+}
 
 internal fun ObdValues.toEngine() = EngineData(
     rpm = rpm,

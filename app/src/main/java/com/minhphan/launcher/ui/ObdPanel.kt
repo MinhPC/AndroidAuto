@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -41,12 +42,16 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.minhphan.launcher.R
+import com.minhphan.launcher.obd.ObdField
 import com.minhphan.launcher.obd.ObdProblem
 import com.minhphan.launcher.obd.ObdState
 import com.minhphan.launcher.obd.ObdValues
+import com.minhphan.launcher.obd.reading
 import com.minhphan.trip.FuelBook
+import com.minhphan.trip.FuelEstimate
 import com.minhphan.trip.TripMeter
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 
@@ -54,13 +59,21 @@ import kotlinx.coroutines.flow.StateFlow
 private const val STALE_ALPHA = 0.45f
 
 // Where each smaller reading turns amber and red.
-private const val COOLANT_WARN_C = 100
-private const val COOLANT_HOT_C = 105
-private const val INTAKE_WARN_C = 60
-private const val INTAKE_HOT_C = 75
-private const val TRIM_WARN_PERCENT = 10
-private const val TRIM_BAD_PERCENT = 20
+private const val COOLANT_WARN_C = 100f
+private const val COOLANT_HOT_C = 105f
+private const val INTAKE_WARN_C = 60f
+private const val INTAKE_HOT_C = 75f
+private const val TRIM_WARN_PERCENT = 10f
+private const val TRIM_BAD_PERCENT = 20f
 private const val TRIM_SPAN_PERCENT = 25f
+private const val OIL_WARN_C = 125f
+private const val OIL_HOT_C = 140f
+private const val FUEL_WARN_PERCENT = 20f
+private const val FUEL_LOW_PERCENT = 10f
+private const val SPEED_MAX_KMH = 240f
+private const val RPM_MAX = 8000f
+private const val RPM_REDLINE = 6500f
+private const val TILES_PER_ROW = 3
 private const val VOLTAGE_LOW = 11.8f
 private const val VOLTAGE_HIGH = 15f
 
@@ -69,9 +82,9 @@ private enum class Tone { Normal, Warn, Danger }
 
 /**
  * The right half of Home: the trip computer and the fuel book on top (they need no adapter), then, read from the
- * OBD adapter, coolant and intake air temperature, battery voltage, engine load, throttle and fuel trim as small
- * tiles with a level bar. Speed and engine speed are not here: the dashboard already shows them. Values the car
- * does not report show "--"; while there is no connection the panel says why and, where the user can fix it,
+ * OBD adapter, the values the driver chose in Settings as small tiles with a level bar (by default coolant and intake
+ * air temperature, battery voltage, engine load, throttle and fuel trim; speed and engine speed are on the dashboard).
+ * Values the car does not report show "--"; while there is no connection the panel says why and, where the user can fix it,
  * offers the way. While the link is only being re-established the last reading stays up, faded.
  */
 @Composable
@@ -80,6 +93,8 @@ fun ObdPanel(
     trip: StateFlow<TripMeter>,
     totalKm: StateFlow<Double>,
     fuel: StateFlow<FuelBook>,
+    fuelEstimate: StateFlow<FuelEstimate?>,
+    fields: List<ObdField>,
     recording: Boolean,
     bluetooth: BluetoothPermission,
     onStartTrip: () -> Unit,
@@ -116,87 +131,95 @@ fun ObdPanel(
             .background(MaterialTheme.colorScheme.surface)
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape),
     ) {
-        // Type in the tiles is sized from the panel height, so it fills the panel on a wide screen and a tall one.
-        val tileValueSize = with(density) { (maxHeight * 0.055f).toSp() }
+        // Type in the tiles is sized from the panel height, so it fills the panel on a wide screen and a tall one;
+        // with a third row of tiles each is shorter, so the type is smaller and the cards above give up some height.
+        val crowded = fields.size > 2 * TILES_PER_ROW
+        val tileValueSize = with(density) { (maxHeight * (if (crowded) 0.044f else 0.055f)).toSp() }
 
         Column(
             Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Header(state)
-            Row(Modifier.weight(2f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.weight(if (crowded) 1.9f else 2.4f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TripCard(trip, totalKm, recording, onStartTrip, onStopTrip)
-                RefuelCard(fuel, onRefuel)
+                RefuelCard(fuel, fuelEstimate, onRefuel)
             }
             if (problem != null) {
                 Recovery(problem, bluetooth, onOpenSettings, Modifier.weight(2f).fillMaxWidth())
                 return@Column
             }
 
-            TileRow(dim) {
-                Metric(
-                    label = stringResource(R.string.obd_coolant),
-                    value = values.coolantC?.toString(),
-                    unit = "°C",
-                    valueSize = tileValueSize,
-                    fraction = values.coolantC?.let { (it - 40) / 80f },
-                    tone = toneAbove(values.coolantC, COOLANT_WARN_C, COOLANT_HOT_C),
-                )
-                Metric(
-                    label = stringResource(R.string.obd_intake),
-                    value = values.intakeC?.toString(),
-                    unit = "°C",
-                    valueSize = tileValueSize,
-                    fraction = values.intakeC?.let { it / 80f },
-                    tone = toneAbove(values.intakeC, INTAKE_WARN_C, INTAKE_HOT_C),
-                )
-                Metric(
-                    label = stringResource(R.string.obd_voltage),
-                    value = values.voltage?.let { "%.1f".format(it) },
-                    unit = "V",
-                    valueSize = tileValueSize,
-                    fraction = values.voltage?.let { (it - 10f) / 6f },
-                    tone = if (values.voltage?.let { it < VOLTAGE_LOW || it > VOLTAGE_HIGH } == true) Tone.Danger else Tone.Normal,
-                )
-            }
-            TileRow(dim) {
-                Metric(
-                    label = stringResource(R.string.obd_load),
-                    value = values.loadPercent?.toString(),
-                    unit = "%",
-                    valueSize = tileValueSize,
-                    fraction = values.loadPercent?.let { it / 100f },
-                )
-                Metric(
-                    label = stringResource(R.string.obd_throttle),
-                    value = values.throttlePercent?.toString(),
-                    unit = "%",
-                    valueSize = tileValueSize,
-                    fraction = values.throttlePercent?.let { it / 100f },
-                )
-                Metric(
-                    label = stringResource(R.string.obd_fuel_trim),
-                    value = values.fuelTrimPercent?.let { "%+d".format(it) },
-                    unit = "%",
-                    valueSize = tileValueSize,
-                    // The bar sits half full at zero: filled more when the engine adds fuel, less when it takes it away.
-                    fraction = values.fuelTrimPercent?.let { (it + TRIM_SPAN_PERCENT) / (2 * TRIM_SPAN_PERCENT) },
-                    tone = toneAway(values.fuelTrimPercent, TRIM_WARN_PERCENT, TRIM_BAD_PERCENT),
-                )
+            // The values the driver chose in Settings, three to a row; an empty place keeps the tiles the same width.
+            fields.chunked(TILES_PER_ROW).forEach { row ->
+                TileRow(dim) {
+                    row.forEach { field -> FieldTile(field, values, tileValueSize) }
+                    repeat(TILES_PER_ROW - row.size) { Spacer(Modifier.weight(1f)) }
+                }
             }
         }
     }
 }
 
-private fun toneAbove(value: Int?, warn: Int, danger: Int) = when {
-    value == null -> Tone.Normal
+/** How a value is written on its tile, how full its bar is, and when it turns amber and red. */
+private class FieldStyle(
+    val text: (Float) -> String,
+    val fraction: (Float) -> Float,
+    val tone: (Float) -> Tone = { Tone.Normal },
+)
+
+private fun whole(value: Float) = value.roundToInt().toString()
+
+private fun signed(value: Float) = "%+d".format(value.roundToInt())
+
+private fun above(value: Float, warn: Float, danger: Float) = when {
     value >= danger -> Tone.Danger
     value >= warn -> Tone.Warn
     else -> Tone.Normal
 }
 
-/** Like [toneAbove], for a reading that is wrong in either direction: what counts is how far it is from zero. */
-private fun toneAway(value: Int?, warn: Int, danger: Int) = toneAbove(value?.let { abs(it) }, warn, danger)
+private fun below(value: Float, warn: Float, danger: Float) = when {
+    value <= danger -> Tone.Danger
+    value <= warn -> Tone.Warn
+    else -> Tone.Normal
+}
+
+private fun styleOf(field: ObdField): FieldStyle = when (field) {
+    ObdField.COOLANT -> FieldStyle(::whole, { (it - 40) / 80f }, { above(it, COOLANT_WARN_C, COOLANT_HOT_C) })
+    ObdField.INTAKE -> FieldStyle(::whole, { it / 80f }, { above(it, INTAKE_WARN_C, INTAKE_HOT_C) })
+    ObdField.VOLTAGE -> FieldStyle(
+        { "%.1f".format(it) },
+        { (it - 10f) / 6f },
+        { if (it < VOLTAGE_LOW || it > VOLTAGE_HIGH) Tone.Danger else Tone.Normal },
+    )
+    ObdField.LOAD, ObdField.THROTTLE -> FieldStyle(::whole, { it / 100f })
+    // The bar sits half full at zero: filled more when the engine adds fuel, less when it takes it away.
+    ObdField.FUEL_TRIM, ObdField.SHORT_TRIM ->
+        FieldStyle(::signed, { (it + TRIM_SPAN_PERCENT) / (2 * TRIM_SPAN_PERCENT) }, { above(abs(it), TRIM_WARN_PERCENT, TRIM_BAD_PERCENT) })
+    ObdField.MAP -> FieldStyle(::whole, { it / 110f })
+    ObdField.TIMING -> FieldStyle(::signed, { (it + 10f) / 60f })
+    ObdField.MAF -> FieldStyle(::whole, { it / 100f })
+    ObdField.AMBIENT -> FieldStyle(::whole, { (it + 10f) / 60f })
+    ObdField.BARO -> FieldStyle(::whole, { (it - 80f) / 40f })
+    ObdField.OIL -> FieldStyle(::whole, { (it - 40f) / 110f }, { above(it, OIL_WARN_C, OIL_HOT_C) })
+    ObdField.FUEL_LEVEL -> FieldStyle(::whole, { it / 100f }, { below(it, FUEL_WARN_PERCENT, FUEL_LOW_PERCENT) })
+    ObdField.SPEED -> FieldStyle(::whole, { it / SPEED_MAX_KMH })
+    ObdField.RPM -> FieldStyle(::whole, { it / RPM_MAX }, { above(it, RPM_REDLINE, RPM_REDLINE) })
+}
+
+@Composable
+private fun RowScope.FieldTile(field: ObdField, values: ObdValues, valueSize: TextUnit) {
+    val reading = values.reading(field)
+    val style = styleOf(field)
+    Metric(
+        label = stringResource(field.label),
+        value = reading?.let(style.text),
+        unit = field.unit,
+        valueSize = valueSize,
+        fraction = reading?.let(style.fraction),
+        tone = reading?.let(style.tone) ?: Tone.Normal,
+    )
+}
 
 @Composable
 private fun ColumnScope.TileRow(alpha: Float, content: @Composable RowScope.() -> Unit) {

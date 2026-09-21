@@ -23,8 +23,12 @@ import kotlinx.coroutines.flow.stateIn
 class ObdHub(context: Context, settings: StateFlow<LauncherSettings>, scope: CoroutineScope) {
     private val bluetoothGranted = MutableStateFlow(hasBluetoothPermission(context))
 
+    /** The values on Home that are not always read; followed live, so choosing another does not reconnect. */
+    private val extraPids: StateFlow<Set<Pid>> = settings.map { extraPidsFor(it.obdFields) }.distinctUntilChanged()
+        .stateIn(scope, SharingStarted.Eagerly, extraPidsFor(settings.value.obdFields))
+
     val states: StateFlow<ObdState> = combine(settings.map { it.obdAddress }.distinctUntilChanged(), bluetoothGranted, ::Pair)
-        .flatMapLatest { (address, granted) -> obdStates(context.applicationContext, address, granted) }
+        .flatMapLatest { (address, granted) -> obdStates(context.applicationContext, address, granted) { extraPids.value } }
         .stateIn(scope, SharingStarted.WhileSubscribed(5_000, replayExpirationMillis = 0), ObdState.Connecting())
 
     fun setBluetoothGranted(granted: Boolean) {

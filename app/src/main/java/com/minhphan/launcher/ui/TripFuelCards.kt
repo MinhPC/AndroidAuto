@@ -39,13 +39,19 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.minhphan.launcher.R
 import com.minhphan.trip.FuelBook
+import com.minhphan.trip.FuelEstimate
 import com.minhphan.trip.TripMeter
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import java.text.NumberFormat
 import java.util.Locale
+import kotlin.math.roundToInt
 
 private val CardShape = RoundedCornerShape(18.dp)
+
+// The range turns amber, then red, as the tank empties (a 50 L tank: 10 L and 5 L).
+private const val LOW_FUEL_WARN_PERCENT = 20
+private const val LOW_FUEL_DANGER_PERCENT = 10
 
 /**
  * The trip computer: press to start counting kilometres, time and average speed of one trip, press again to end it
@@ -113,23 +119,58 @@ fun RowScope.TripCard(
     }
 }
 
-/** The fuel book on the home screen: the last fill-up (litres and money), its economy and the average, and the button to add one. */
+/**
+ * The fuel on the home screen: how far the car can still go on what is thought to be in the tank (turning amber and
+ * then red as it runs low), the last fill-up, and the button to log a new one. Until there has been a full fill-up
+ * there is no estimate, and the card shows the last fill-up and how to get one.
+ */
 @Composable
-fun RowScope.RefuelCard(fuel: StateFlow<FuelBook>, onRefuel: () -> Unit, modifier: Modifier = Modifier) {
+fun RowScope.RefuelCard(
+    fuel: StateFlow<FuelBook>,
+    estimate: StateFlow<FuelEstimate?>,
+    onRefuel: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val book by fuel.collectAsStateWithLifecycle()
+    val left by estimate.collectAsStateWithLifecycle()
     val last = book.last
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
     ActionCard(stringResource(R.string.refuel_card_title), modifier) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            if (last == null) {
+            val now = left
+            if (now != null) {
+                val tone = when {
+                    now.percent <= LOW_FUEL_DANGER_PERCENT -> MaterialTheme.colorScheme.error
+                    now.percent <= LOW_FUEL_WARN_PERCENT -> StatusWarn
+                    else -> MaterialTheme.colorScheme.onSurface
+                }
                 Text(
-                    stringResource(R.string.refuel_none),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    stringResource(R.string.refuel_range, (now.rangeKm / 5).roundToInt() * 5),
+                    style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = tone,
+                    maxLines = 1,
                 )
+                Text(
+                    text = stringResource(
+                        if (now.assumed) R.string.refuel_left_assumed else R.string.refuel_left,
+                        now.liters.roundToInt(),
+                        now.percent,
+                        oneDecimal(now.kmPerLiter),
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = muted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (last == null) {
+                if (now == null) Text(stringResource(R.string.refuel_none), style = MaterialTheme.typography.bodyLarge, color = muted)
             } else {
+                // With an estimate the last fill-up is a line under it; without one it is the card's headline.
                 Text(
                     stringResource(R.string.refuel_last, oneDecimal(last.liters), money(last.amountVnd)),
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                    style = if (now != null) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = if (now != null) muted else MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -140,10 +181,10 @@ fun RowScope.RefuelCard(fuel: StateFlow<FuelBook>, onRefuel: () -> Unit, modifie
                         economy != null && average != null ->
                             stringResource(R.string.refuel_economy, oneDecimal(economy), oneDecimal(average))
                         average != null -> stringResource(R.string.refuel_average, oneDecimal(average))
-                        else -> stringResource(R.string.refuel_economy_none)
+                        else -> stringResource(R.string.refuel_need_full)
                     },
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = muted,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )

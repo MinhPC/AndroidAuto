@@ -10,21 +10,16 @@ import com.minhphan.launcher.data.AppInfo
 import com.minhphan.launcher.data.AppRepository
 import com.minhphan.launcher.data.FavoritesStore
 import com.minhphan.launcher.data.LauncherSettings
+import com.minhphan.launcher.data.UsageStore
 import com.minhphan.launcher.data.ThemeMode
 import com.minhphan.launcher.diagnostics.DiagnosticLine
 import com.minhphan.launcher.diagnostics.runConnectivityTest
+import com.minhphan.launcher.obd.ObdField
 import com.minhphan.launcher.obd.ObdState
-import com.minhphan.launcher.data.LastLocationStore
 import com.minhphan.launcher.sync.SyncState
-import com.minhphan.launcher.sync.TestResult
-import com.minhphan.launcher.sync.toEngine
-import com.minhphan.trip.EngineData
 import com.minhphan.trip.FuelBook
-import com.minhphan.trip.LatLon
-import com.minhphan.trip.LiveStatus
+import com.minhphan.trip.FuelEstimate
 import com.minhphan.trip.TripMeter
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import com.minhphan.cloud.AccountState
 import com.minhphan.launcher.update.UpdateInfo
 import com.minhphan.launcher.update.UpdateManager
@@ -45,6 +40,7 @@ import kotlinx.coroutines.launch
 class LauncherViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = AppRepository(application)
     private val store = FavoritesStore(application)
+    private val usage = UsageStore(application)
     private val launcher = application as LauncherApplication
     private val settingsStore = launcher.settingsStore
     private val updates = UpdateManager(application, viewModelScope)
@@ -85,6 +81,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     /** The last fill-up and the average fuel economy. */
     val fuelBook: StateFlow<FuelBook> = launcher.driveLog.fuel
 
+    /** How much fuel is thought to be left, and so how far the car can go; null before the first full fill-up. */
+    val fuelEstimate: StateFlow<FuelEstimate?> = combine(launcher.driveLog.totalKm, fuelBook, settings) { _, _, current ->
+        launcher.driveLog.fuelEstimate(current.tankLiters)
+    }.distinctUntilChanged().stateIn(viewModelScope, SharingStarted.Eagerly, launcher.driveLog.fuelEstimate(settings.value.tankLiters))
+
     private val _connectivity = MutableStateFlow<List<DiagnosticLine>>(emptyList())
 
     /** Lines from the last network test (empty until it has run). */
@@ -114,26 +115,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun signOut() = launcher.cloud.signOut()
 
-    /** What a test send did, and whether it used the real engine data of the car or a made-up sample. */
-    data class TestOutcome(val result: TestResult, val realEngine: Boolean)
-
-    /**
-     * Sends the car's current engine data (or a sample if the OBD adapter is not connected) to Firebase, at the last
-     * known position, and reads it back: the way to check the connection before the car drives anywhere.
-     */
-    suspend fun sendTest(): TestOutcome {
-        val real = (launcher.obdHub.states.value as? ObdState.Connected)?.values?.toEngine()
-        val position = withContext(Dispatchers.IO) { LastLocationStore(getApplication()).current() }
-        val live = LiveStatus(
-            position = position?.let { LatLon(it.latitude, it.longitude) } ?: SAMPLE_POSITION,
-            speedKmh = 0f,
-            moving = false,
-            updatedAt = System.currentTimeMillis(),
-            engine = real ?: SAMPLE_ENGINE,
-        )
-        return TestOutcome(launcher.tripUploader.sendTest(live), realEngine = real != null)
-    }
-
     fun startTrip() = launcher.driveLog.startTrip(System.currentTimeMillis())
 
     fun stopTrip() = launcher.driveLog.stopTrip(System.currentTimeMillis())
@@ -143,9 +124,14 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     /** Records a fill-up on the car and sends it to the signed-in account. [distanceKm] is the driver's own figure, if any. */
     fun recordRefuel(liters: Double, amountVnd: Long, full: Boolean, distanceKm: Double?) {
-        val refuel = launcher.driveLog.recordRefuel(System.currentTimeMillis(), liters, amountVnd, full, distanceKm)
-        launcher.tripUploader.saveRefuel(refuel)
+        launcher.driveLog.recordRefuel(System.currentTimeMillis(), liters, amountVnd, full, distanceKm)
+        launcher.uploadPendingRefuels()
+        launcher.tripUploader.saveFuel(launcher.driveLog.fuelEstimate(settings.value.tankLiters))
     }
+
+    fun setTankLiters(value: Int) = settingsStore.setTankLiters(value)
+
+    fun setObdField(field: ObdField, on: Boolean) = settingsStore.setObdField(field, on)
 
     fun setSyncTrips(value: Boolean) = settingsStore.setSyncTrips(value)
 
@@ -153,7 +139,13 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         _homeEvents.tryEmit(Unit)
     }
 
-    fun launch(app: AppInfo) = repository.launch(app)
+    /** How many times each app has been launched from here; the All apps list puts the most used first. */
+    val appUsage: StateFlow<Map<String, Int>> = usage.counts
+
+    fun launch(app: AppInfo) {
+        usage.record(app.key)
+        repository.launch(app)
+    }
 
     fun checkForUpdate() = updates.check(manual = true)
 
@@ -199,10 +191,5 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     companion object {
         const val MAX_FAVORITES = 5
-
-        private val SAMPLE_POSITION = LatLon(21.0285, 105.8542) // Hoan Kiem, Hanoi
-        private val SAMPLE_ENGINE = EngineData(
-            rpm = 2100, coolantC = 88, intakeC = 38, loadPercent = 35, throttlePercent = 18, fuelTrimPercent = -2, voltage = 14.1f,
-        )
     }
 }

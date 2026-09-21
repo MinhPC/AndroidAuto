@@ -61,6 +61,126 @@ class TripTrackerTest {
     }
 
     @Test
+    fun comingToAStopSendsWhatIsWaitingAtOnce() {
+        val tracker = TripTracker(zone)
+        tracker.cruise(minutes = 1) // 61 fixes: the first 12 route points went out, one is still waiting
+
+        val stopMeters = 16.6667 * 61
+        val events = tracker.onFix(fix(61, stopMeters, 0f))
+
+        val route = events.filterIsInstance<TripEvent.Route>().single()
+        assertEquals(t0 + 61_000, route.points.last().timeMs) // the route reaches the place where the car stopped
+        val trip = events.saves().single()
+        assertTrue(trip.ongoing) // it may be a red light: the trip is not over yet
+        assertEquals(t0 + 61_000, trip.endedAt)
+        assertEquals(stopMeters / 1000.0, trip.distanceKm, 0.05)
+        assertEquals(1, events.filterIsInstance<TripEvent.Live>().size)
+        assertTrue(events.filterIsInstance<TripEvent.DayChange>().isNotEmpty())
+    }
+
+    @Test
+    fun stopsCloserTogetherThanTenSecondsAreOneStop() {
+        val tracker = TripTracker(zone)
+        tracker.cruise(minutes = 1)
+        assertTrue(tracker.onFix(fix(61, 16.6667 * 61, 0f)).saves().isNotEmpty())
+
+        tracker.onFix(fix(62, 16.6667 * 62, 60f)) // moves off again
+        val second = tracker.onFix(fix(70, 16.6667 * 70, 0f)) // and stops again nine seconds later
+        assertTrue(second.saves().isEmpty())
+        assertTrue(second.filterIsInstance<TripEvent.Route>().isEmpty())
+
+        for (s in 71..100L) tracker.onFix(fix(s, 16.6667 * 70, 0f))
+        tracker.onFix(fix(101, 16.6667 * 101, 60f)) // it moves off and stops again more than 10 s after the first stop
+        val third = tracker.onFix(fix(110, 16.6667 * 110, 0f))
+        assertTrue(third.saves().isNotEmpty())
+    }
+
+    @Test
+    fun aShortMoveInACarParkSendsNothingWhenItStops() {
+        val tracker = TripTracker(zone)
+        val events = ArrayList<TripEvent>()
+        for (s in 0..20L) events += tracker.onFix(fix(s, 2.78 * s, 10f)) // about 55 m at 10 km/h
+        events += tracker.onFix(fix(21, 2.78 * 21, 0f))
+
+        assertTrue(events.saves().isEmpty())
+        assertTrue(events.filterIsInstance<TripEvent.Route>().isEmpty())
+    }
+
+    @Test
+    fun theTripEndsSoonAfterTheEngineIsSwitchedOff() {
+        val tracker = TripTracker(zone)
+        tracker.cruise(minutes = 2, engine = EngineData(rpm = 2000)) // stops at second 120
+        val parked = 16.6667 * 120
+
+        val events = ArrayList<TripEvent>()
+        // The car goes quiet when the ignition goes off: the launcher reports 0 rpm.
+        for (s in 121..160L) events += tracker.onFix(fix(s, parked, 0f), EngineData(rpm = 0))
+
+        val trip = events.saves().last()
+        assertFalse(trip.ongoing)
+        assertEquals(t0 + 120_000, trip.endedAt) // it ended when the car stopped
+        assertFalse(tracker.driving)
+    }
+
+    @Test
+    fun anEngineThatReadsZeroRpmAlsoEndsIt() {
+        val tracker = TripTracker(zone)
+        tracker.cruise(minutes = 2, engine = EngineData(rpm = 2000))
+        for (s in 121..145L) tracker.onFix(fix(s, 16.6667 * 120, 0f), EngineData(rpm = 0))
+        assertFalse(tracker.driving)
+    }
+
+    @Test
+    fun anAdapterThatDropsItsLinkWhileTheCarIdlesIsNotTheEngineSwitchedOff() {
+        val tracker = TripTracker(zone)
+        tracker.cruise(minutes = 2, engine = EngineData(rpm = 2000))
+        // Two minutes without any engine reading at all: unknown, not "off".
+        for (s in 121..240L) tracker.onFix(fix(s, 16.6667 * 120, 0f), EngineData())
+        assertTrue(tracker.driving)
+    }
+
+    @Test
+    fun theStopFlushSaysTheCarIsNotMoving() {
+        val tracker = TripTracker(zone)
+        tracker.cruise(minutes = 1)
+        val live = tracker.onFix(fix(61, 16.6667 * 61, 0f)).filterIsInstance<TripEvent.Live>().single()
+        assertFalse(live.status.moving)
+        assertEquals(0f, live.status.speedKmh, 0f)
+    }
+
+    @Test
+    fun aDroppedReadingAtARedLightDoesNotEndTheTrip() {
+        val tracker = TripTracker(zone)
+        tracker.cruise(minutes = 2, engine = EngineData(rpm = 2000))
+        for (s in 121..180L) {
+            val engine = if (s in 140..144) EngineData() else EngineData(rpm = 800) // five seconds without an answer
+            tracker.onFix(fix(s, 16.6667 * 120, 0f), engine)
+        }
+        assertTrue(tracker.driving)
+    }
+
+    @Test
+    fun aCarStandingWithItsEngineRunningKeepsItsTripOpenLongerThanFiveMinutes() {
+        val tracker = TripTracker(zone)
+        tracker.cruise(minutes = 2, engine = EngineData(rpm = 2000))
+        for (s in 121..120L + 14 * 60) tracker.onFix(fix(s, 16.6667 * 120, 0f), EngineData(rpm = 800))
+        assertTrue(tracker.driving) // fourteen minutes in a jam
+
+        for (s in 120L + 14 * 60 + 1..120L + 16 * 60) tracker.onFix(fix(s, 16.6667 * 120, 0f), EngineData(rpm = 800))
+        assertFalse(tracker.driving) // but not for ever
+    }
+
+    @Test
+    fun withoutAnAdapterAStoppedCarStillEndsItsTripAfterFiveMinutes() {
+        val tracker = TripTracker(zone)
+        tracker.cruise(minutes = 2)
+        for (s in 121..120L + 4 * 60) tracker.onFix(fix(s, 16.6667 * 120, 0f))
+        assertTrue(tracker.driving)
+        for (s in 120L + 4 * 60 + 1..120L + 6 * 60) tracker.onFix(fix(s, 16.6667 * 120, 0f))
+        assertFalse(tracker.driving)
+    }
+
+    @Test
     fun theRouteIsSentInPiecesThatJoinUp() {
         val tracker = TripTracker(zone)
         val events = tracker.cruise(minutes = 5).toMutableList()

@@ -14,10 +14,25 @@ data class TripConfig(
     val maxAccuracyM: Float = 50f,
     /** A trip ends after the car has stood this long (a red light is not the end of a trip, an hour in a car park is). */
     val stopAfterMs: Long = 5 * 60_000L,
+    /**
+     * Once the engine has been seen (an OBD adapter is connected), a stopped car whose engine reads 0 rpm (the car has
+     * gone quiet with the ignition) is parked with the engine off: the trip is over after this long, not after
+     * [stopAfterMs]. A reading that is merely missing (the adapter link dropped) is not that, and a 0 for a few
+     * seconds at a red light is why it takes a while.
+     */
+    val engineOffAfterMs: Long = 20_000L,
+    /** A car that stands with its engine running (a jam, a drive-through) keeps its trip open this long instead. */
+    val engineIdleStopAfterMs: Long = 15 * 60_000L,
     /** A trip also ends when the GPS has said nothing for this long. */
     val silenceEndsTripMs: Long = 5 * 60_000L,
     val pointEveryMs: Long = 5_000L,
     val flushEveryPoints: Int = 12,
+    /**
+     * When the car comes to a stop what is waiting is sent at once, because the driver may switch the engine off
+     * (and the head unit with it) before the next scheduled send. Stops closer together than this are one stop:
+     * a queue of traffic must not write to Firestore at every crawl.
+     */
+    val stopFlushMinGapMs: Long = 10_000L,
     val liveEveryMs: Long = 15_000L,
     val idleLiveEveryMs: Long = 10 * 60_000L,
     /** A trip shorter than this is GPS drift or a move in the car park and is dropped without a trace. */
@@ -63,6 +78,9 @@ class TripTracker(private val zone: ZoneId, private val config: TripConfig = Tri
         var confirmed = false
         var lastPointAt = NEVER
         var lastLiveAt = NEVER
+        var lastStopFlushAt = NEVER
+        var sawEngine = false
+        var engineOffSince = NEVER
         var seq = 0
         var pointCount = 0
         val buffer = ArrayList<TripPoint>()
@@ -122,6 +140,7 @@ class TripTracker(private val zone: ZoneId, private val config: TripConfig = Tri
     private fun advance(t: Active, fix: Fix, engine: EngineData, out: MutableList<TripEvent>) {
         val dtMs = fix.timeMs - t.lastFix.timeMs
         val moving = fix.speedKmh >= config.stopSpeedKmh
+        val justStopped = !moving && t.lastFix.speedKmh >= config.stopSpeedKmh
         val meters = distanceMeters(t.lastFix.position, fix.position)
         val day = t.days.getOrPut(dayOf(fix.timeMs)) { DayChanges() }
         if (moving && meters / (dtMs / 1000.0) <= config.maxPlausibleSpeedMs) {
@@ -136,11 +155,26 @@ class TripTracker(private val zone: ZoneId, private val config: TripConfig = Tri
         day.maxSpeedKmh = maxOf(day.maxSpeedKmh, fix.speedKmh)
         noteEngine(t, engine)
         t.lastFix = fix
+        val rpm = engine.rpm ?: 0
+        val engineOff = t.sawEngine && engine.rpm == 0
+        if (!moving && engineOff) {
+            if (t.engineOffSince == NEVER) t.engineOffSince = fix.timeMs
+        } else {
+            t.engineOffSince = NEVER
+        }
         if (moving) {
             t.lastMovingFix = fix
-        } else if (fix.timeMs - t.lastMovingFix.timeMs >= config.stopAfterMs) {
-            end(t, t.lastMovingFix, fix.timeMs, out)
-            return
+        } else {
+            val standingFor = fix.timeMs - t.lastMovingFix.timeMs
+            val over = when {
+                t.engineOffSince != NEVER -> fix.timeMs - t.engineOffSince >= config.engineOffAfterMs
+                rpm > 0 -> standingFor >= config.engineIdleStopAfterMs
+                else -> standingFor >= config.stopAfterMs
+            }
+            if (over) {
+                end(t, t.lastMovingFix, fix.timeMs, out)
+                return
+            }
         }
 
         if (moving && fix.timeMs - t.lastPointAt >= config.pointEveryMs) {
@@ -152,7 +186,15 @@ class TripTracker(private val zone: ZoneId, private val config: TripConfig = Tri
             t.days.getOrPut(t.day) { DayChanges() }.newTrips = 1
             flush(t, out)
         }
-        live(t, fix, engine, out)
+        if (justStopped && t.confirmed && fix.timeMs - t.lastStopFlushAt >= config.stopFlushMinGapMs) {
+            // The car has just come to a stop, maybe for good: send the route up to this spot, the trip and the day totals now.
+            t.lastStopFlushAt = fix.timeMs
+            addPoint(t, fix, engine)
+            flush(t, out)
+            live(t, fix, engine, out, force = true)
+        } else {
+            live(t, fix, engine, out)
+        }
     }
 
     private fun addPoint(t: Active, fix: Fix, engine: EngineData) {
@@ -162,6 +204,7 @@ class TripTracker(private val zone: ZoneId, private val config: TripConfig = Tri
     }
 
     private fun noteEngine(t: Active, e: EngineData) {
+        if (e.rpm != null) t.sawEngine = true
         e.rpm?.let { t.maxRpm = maxOf(t.maxRpm ?: it, it) }
         e.coolantC?.let { t.maxCoolantC = maxOf(t.maxCoolantC ?: it, it) }
         e.intakeC?.let { t.maxIntakeC = maxOf(t.maxIntakeC ?: it, it) }
@@ -205,10 +248,11 @@ class TripTracker(private val zone: ZoneId, private val config: TripConfig = Tri
         }
     }
 
-    private fun live(t: Active, fix: Fix, engine: EngineData, out: MutableList<TripEvent>) {
-        if (fix.timeMs - t.lastLiveAt < config.liveEveryMs) return
+    private fun live(t: Active, fix: Fix, engine: EngineData, out: MutableList<TripEvent>, force: Boolean = false) {
+        if (!force && fix.timeMs - t.lastLiveAt < config.liveEveryMs) return
         t.lastLiveAt = fix.timeMs
-        out += TripEvent.Live(LiveStatus(fix.position, fix.speedKmh, moving = true, updatedAt = fix.timeMs, engine = engine))
+        // A car standing in a trip is not moving: the last live document written before the engine goes off says so.
+        out += TripEvent.Live(LiveStatus(fix.position, fix.speedKmh, moving = fix.speedKmh >= config.stopSpeedKmh, updatedAt = fix.timeMs, engine = engine))
     }
 
     /** While parked the phone still learns where the car is, but only now and then. */

@@ -42,6 +42,17 @@ class Engine:
 
 
 @dataclass(frozen=True)
+class FuelLevel:
+    """How much fuel the launcher thinks is left. The car does not say, so it counts down from the last full fill-up."""
+
+    liters: float
+    range_km: float
+    percent: int | None  # None when the document does not say
+    km_per_liter: float | None
+    assumed: bool  # true until the driver's own economy is known and a typical one stands in for it
+
+
+@dataclass(frozen=True)
 class Live:
     latitude: float
     longitude: float
@@ -49,6 +60,7 @@ class Live:
     moving: bool
     updated_at: float  # seconds since the epoch
     engine: Engine
+    fuel: FuelLevel | None = None
 
     def settled(self, now: float) -> Live:
         """As it should be shown at [now]: a car not heard from for a while is not known to be moving."""
@@ -118,6 +130,22 @@ def parse_live(data: dict[str, Any] | None) -> Live | None:
             fuel_trim_percent=_int(engine, "fuelTrimPercent"),
             voltage=_number(engine, "voltage"),
         ),
+        fuel=_parse_fuel(data.get("fuel")),
+    )
+
+
+def _parse_fuel(data: Any) -> FuelLevel | None:
+    if not isinstance(data, dict):
+        return None
+    liters, range_km, percent, economy = (_number(data, key) for key in ("liters", "rangeKm", "percent", "kmPerLiter"))
+    if liters is None or range_km is None:
+        return None
+    return FuelLevel(
+        liters=liters,
+        range_km=range_km,
+        percent=round(percent) if percent is not None else None,
+        km_per_liter=economy,
+        assumed=data.get("assumed") is True,
     )
 
 

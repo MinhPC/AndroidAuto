@@ -57,4 +57,6 @@ data class LiveStatus(
     val moving: Boolean,
     val updatedAt: Long,
     val engine: EngineData = EngineData(),
+    /** How much fuel is thought to be left; null until the driver has filled the tank up once. */
+    val fuel: FuelEstimate? = null,
 )

@@ -162,6 +162,26 @@ fun LiveStatus.toMap(): Map<String, Any?> = mapOf(
     "updatedAt" to updatedAt,
     "engine" to engine.toMap(),
 )
+    .withIfNotNull("fuel", fuel?.toMap())
+
+fun FuelEstimate.toMap(): Map<String, Any?> = mapOf(
+    "liters" to liters,
+    "rangeKm" to rangeKm,
+    "percent" to percent,
+    "kmPerLiter" to kmPerLiter,
+    "assumed" to assumed,
+)
+
+private fun fuelEstimateFrom(map: Map<String, Any?>?): FuelEstimate? {
+    if (map == null) return null
+    return FuelEstimate(
+        liters = map["liters"].double() ?: return null,
+        rangeKm = map["rangeKm"].double() ?: return null,
+        percent = map["percent"].int() ?: return null,
+        kmPerLiter = map["kmPerLiter"].double() ?: return null,
+        assumed = map["assumed"] as? Boolean ?: false,
+    )
+}
 
 fun liveStatusFrom(map: Map<String, Any?>): LiveStatus? {
     val position = latLonFrom(map["position"].map()) ?: return null
@@ -172,6 +192,7 @@ fun liveStatusFrom(map: Map<String, Any?>): LiveStatus? {
         moving = map["moving"] as? Boolean ?: false,
         updatedAt = updatedAt,
         engine = engineFrom(map["engine"].map()),
+        fuel = fuelEstimateFrom(map["fuel"].map()),
     )
 }
 

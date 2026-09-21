@@ -1,6 +1,7 @@
 package com.minhphan.launcher.obd
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -25,6 +26,24 @@ class ObdProtocolTest {
     }
 
     @Test
+    fun aSupportBitmapListsThePidsWhoseBitsAreSet() {
+        // BE 3F A8 13: bit 1 is PID 01, the last bit is PID 20, which says the next block exists.
+        val pids = decodeSupported(0x00, intArrayOf(0xBE, 0x3F, 0xA8, 0x13))
+        assertTrue(listOf(0x04, 0x05, 0x06, 0x07, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x20).all { it in pids })
+        assertTrue(listOf(0x02, 0x08, 0x0A, 0x12, 0x2F).none { it in pids })
+
+        assertEquals(setOf(0x55), decodeSupported(0x40, intArrayOf(0x00, 0x00, 0x08, 0x00)))
+    }
+
+    @Test
+    fun everyEcuThatAnswersCounts() {
+        val lines = parseAllPidResponses("41 00 BE 3F A8 13\r41 00 08 00 00 00\rNO DATA", 0x00, 4)
+        assertEquals(2, lines.size)
+        assertTrue(0x0D in decodeSupported(0x00, lines[0]))
+        assertTrue(0x05 in decodeSupported(0x00, lines[1])) // the second ECU's only PID
+    }
+
+    @Test
     fun fuelTrimIsZeroAtOneTwentyEightAndScaledFromThere() {
         assertEquals(0, parsePid("41 07 80", Pid.FuelTrim))
         assertEquals(20, parsePid("41 07 99", Pid.FuelTrim))
@@ -36,6 +55,19 @@ class ObdProtocolTest {
     fun percentagesAreScaledFromTwoFiftyFive() {
         assertEquals(100, parsePid("41 11 FF", Pid.Throttle))
         assertEquals(0, parsePid("41 04 00", Pid.Load))
+    }
+
+    @Test
+    fun theOtherValuesDecodeToTheirUnits() {
+        assertEquals(35, parsePid("41 0B 23", Pid.Map)) // kPa as it is
+        assertEquals(101, parsePid("41 33 65", Pid.Baro))
+        assertEquals(16, parsePid("41 0E A0", Pid.Timing)) // 160 / 2 - 64 degrees
+        assertEquals(-6, parsePid("41 0E 74", Pid.Timing))
+        assertEquals(12, parsePid("41 10 04 B0", Pid.Maf)) // 1200 / 100 g/s
+        assertEquals(31, parsePid("41 46 47", Pid.Ambient))
+        assertEquals(90, parsePid("41 5C 82", Pid.Oil))
+        assertEquals(62, parsePid("41 2F 9E", Pid.FuelLevel))
+        assertEquals(-3, parsePid("41 06 7C", Pid.ShortTrim))
     }
 
     @Test

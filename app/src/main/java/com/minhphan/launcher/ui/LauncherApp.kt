@@ -47,6 +47,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.minhphan.launcher.LauncherViewModel
+import com.minhphan.launcher.data.smartOrder
 import com.minhphan.cloud.AccountState
 import com.minhphan.launcher.sync.TripRecorderService
 import com.minhphan.launcher.update.UpdateState
@@ -56,6 +57,9 @@ fun LauncherApp(viewModel: LauncherViewModel) {
     val apps by viewModel.apps.collectAsStateWithLifecycle()
     val pinned by viewModel.favorites.collectAsStateWithLifecycle()
     val pinnedKeys = remember(pinned) { pinned.mapTo(HashSet()) { it.key } }
+    val usage by viewModel.appUsage.collectAsStateWithLifecycle()
+    // The dock's apps first, then the ones launched most, then the rest by name.
+    val allApps = remember(apps, pinned, usage) { smartOrder(apps, { it.key }, pinned.map { it.key }, usage) }
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val connectivity by viewModel.connectivity.collectAsStateWithLifecycle()
     val connectivityRunning by viewModel.connectivityRunning.collectAsStateWithLifecycle()
@@ -132,6 +136,8 @@ fun LauncherApp(viewModel: LauncherViewModel) {
             trip = viewModel.tripMeter,
             totalKm = viewModel.totalKm,
             fuel = viewModel.fuelBook,
+            fuelEstimate = viewModel.fuelEstimate,
+            fields = settings.obdFields,
             recording = recording,
             bluetooth = bluetooth,
             onStartTrip = viewModel::startTrip,
@@ -214,7 +220,7 @@ fun LauncherApp(viewModel: LauncherViewModel) {
             Overlay(showAllApps) {
                 BackHandler { showAllApps = false }
                 AllAppsScreen(
-                    apps = apps,
+                    apps = allApps,
                     pinnedKeys = pinnedKeys,
                     onLaunch = { app -> showAllApps = false; viewModel.launch(app) },
                     onTogglePin = viewModel::toggleFavorite,
@@ -252,6 +258,7 @@ fun LauncherApp(viewModel: LauncherViewModel) {
             Overlay(showDiagnostics) {
                 BackHandler { showDiagnostics = false }
                 DiagnosticsScreen(
+                    obd = viewModel.obd,
                     connectivity = connectivity,
                     connectivityRunning = connectivityRunning,
                     onTestConnectivity = viewModel::testConnectivity,

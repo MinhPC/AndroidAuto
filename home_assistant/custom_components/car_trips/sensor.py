@@ -248,6 +248,44 @@ SENSORS: tuple[CarSensorDescription, ...] = (
         entity_registry_enabled_default=False,
         value_fn=_trip(lambda t: t.max_intake_c),
     ),
+    # How much fuel is left, counted down by the launcher from the last full fill-up (the car does not report it).
+    CarSensorDescription(
+        key="fuel_range",
+        translation_key="fuel_range",
+        device_class=SensorDeviceClass.DISTANCE,
+        native_unit_of_measurement=UnitOfLength.KILOMETERS,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
+        value_fn=lambda d: round(d.live.fuel.range_km) if d.live and d.live.fuel else None,
+        attributes_fn=lambda d: (
+            {
+                **(
+                    {"economy_km_per_liter": round(d.live.fuel.km_per_liter, 2)}
+                    if d.live.fuel.km_per_liter is not None
+                    else {}
+                ),
+                "economy_assumed": d.live.fuel.assumed,
+            }
+            if d.live and d.live.fuel
+            else {}
+        ),
+    ),
+    CarSensorDescription(
+        key="fuel_remaining",
+        translation_key="fuel_remaining",
+        device_class=SensorDeviceClass.VOLUME_STORAGE,
+        native_unit_of_measurement=UnitOfVolume.LITERS,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        value_fn=lambda d: round(d.live.fuel.liters, 1) if d.live and d.live.fuel else None,
+    ),
+    CarSensorDescription(
+        key="fuel_level_estimate",
+        translation_key="fuel_level_estimate",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda d: d.live.fuel.percent if d.live and d.live.fuel else None,
+    ),
     # The fuel book: what the driver logs at the pump on the launcher.
     CarSensorDescription(
         key="fuel_economy",

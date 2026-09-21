@@ -64,6 +64,7 @@ def test_parse_live_reads_the_position_and_engine():
     assert live.engine.rpm == 2100 and live.engine.coolant_c == 88
     assert live.engine.voltage == 14.1 and live.engine.fuel_trim_percent == -3
     assert live.engine.intake_c is None
+    assert live.fuel is None
 
 
 def test_parse_live_needs_a_position_and_a_time():
@@ -221,3 +222,12 @@ def test_google_maps_links():
 
     many = google_maps_route_url((21.0, 105.8), (21.03, 105.85), [(21.0 + i / 100, 105.8) for i in range(12)])
     assert many.count("%7C") == 8  # Google takes nine waypoints at most
+
+
+def test_parse_live_reads_the_fuel_estimate_and_ignores_a_broken_one():
+    fuel = parse_live(live_doc(fuel={"liters": 28.4, "rangeKm": 341.0, "percent": 57, "kmPerLiter": 12.0, "assumed": True})).fuel
+    assert (fuel.liters, fuel.range_km, fuel.percent, fuel.km_per_liter, fuel.assumed) == (28.4, 341.0, 57, 12.0, True)
+    assert parse_live(live_doc(fuel={"percent": 57})).fuel is None
+    partial = parse_live(live_doc(fuel={"liters": 28.4, "rangeKm": 341.0})).fuel  # no percent, no economy: unknown, not 0
+    assert partial.percent is None and partial.km_per_liter is None and partial.range_km == 341.0
+    assert parse_live(live_doc(fuel="full")).fuel is None

@@ -252,6 +252,26 @@ async def test_the_past_days_are_read_once_an_hour_not_on_every_poll(hass, aiocl
     assert state(hass, "sensor.car_distance_this_year").state == "5100.0"
 
 
+async def test_the_estimated_fuel_left_shows_as_range_litres_and_percent(hass, aioclient_mock, service_account, freezer):
+    fuel = {"liters": 28.4, "rangeKm": 341.2, "percent": 57, "kmPerLiter": 12.0, "assumed": True}
+    arrange(aioclient_mock, live=live_fields(fuel=fuel), trip=trip_fields())
+    await setup(hass, service_account, freezer)
+
+    range_sensor = state(hass, "sensor.car_estimated_fuel_range")
+    assert range_sensor.state == "341"
+    assert range_sensor.attributes["economy_km_per_liter"] == 12.0 and range_sensor.attributes["economy_assumed"] is True
+    assert state(hass, "sensor.car_estimated_fuel_remaining").state == "28.4"
+    assert state(hass, "sensor.car_estimated_fuel_level").state == "57"
+
+
+async def test_without_an_estimate_the_fuel_left_is_unknown(hass, aioclient_mock, service_account, freezer):
+    arrange(aioclient_mock, live=live_fields(), trip=trip_fields())
+    await setup(hass, service_account, freezer)
+
+    assert state(hass, "sensor.car_estimated_fuel_range").state == "unknown"
+    assert state(hass, "sensor.car_estimated_fuel_level").state == "unknown"
+
+
 async def test_the_fuel_book_shows_the_fill_ups(hass, aioclient_mock, service_account, freezer):
     arrange(aioclient_mock, live=live_fields(), trip=trip_fields(), refuels=fill_ups())
     await setup(hass, service_account, freezer)

@@ -4,9 +4,11 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.minhphan.trip.Fix
 import com.minhphan.trip.FuelBook
+import com.minhphan.trip.FuelEstimate
 import com.minhphan.trip.ManualTrip
 import com.minhphan.trip.Odometer
 import com.minhphan.trip.Refuel
+import com.minhphan.trip.TripEvent
 import com.minhphan.trip.TripMeter
 import com.minhphan.trip.TripResult
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,6 +24,8 @@ class DriveLog(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("drive_log", Context.MODE_PRIVATE)
     private val odometer = Odometer(prefs.getDouble(TOTAL_KM) ?: 0.0)
     private var savedKm = odometer.totalKm
+    private var openTrip: String? = prefs.getString(OPEN_TRIP, null) // "account/trip"
+    private var pendingRefuels: List<Refuel> = readPendingRefuels()
 
     private val _totalKm = MutableStateFlow(odometer.totalKm)
 
@@ -58,6 +62,48 @@ class DriveLog(context: Context) {
         saveTrip()
     }
 
+    /**
+     * Remembers which trip is open, from what the tracker sends. If the head unit is switched off with the car the
+     * process is killed without a word, and the trip would stay "ongoing" in Firebase for ever; the next start
+     * asks for it with [takeOpenTrip] and closes it.
+     */
+    @Synchronized
+    fun noteTripEvents(events: List<TripEvent>, uid: String) {
+        val before = openTrip
+        for (event in events) {
+            if (event !is TripEvent.Save) continue
+            val key = "$uid/${event.summary.id}"
+            if (event.summary.ongoing) openTrip = key else if (openTrip == key) openTrip = null
+        }
+        if (openTrip != before) prefs.edit().putStringOrRemove(OPEN_TRIP, openTrip).apply()
+    }
+
+    /** The account and id of the trip that was still open when the last run ended without saying so, if any. */
+    @Synchronized
+    fun openTrip(): Pair<String, String>? = openTrip?.let { it.substringBefore('/') to it.substringAfter('/') }
+
+    /** Forgets the open trip: it has been closed. */
+    @Synchronized
+    fun clearOpenTrip() {
+        openTrip = null
+        prefs.edit().remove(OPEN_TRIP).apply()
+    }
+
+    /** Fill-ups that Firebase has not been given yet (all of them for a driver who was not signed in). */
+    @Synchronized
+    fun pendingRefuels(): List<Refuel> = pendingRefuels
+
+    /** Forgets the fill-ups with these ids: they have been handed to Firebase. */
+    @Synchronized
+    fun refuelsSent(ids: Collection<String>) {
+        pendingRefuels = pendingRefuels.filterNot { it.id in ids }
+        savePendingRefuels()
+    }
+
+    /** How much fuel is thought to be left in a tank of [tankLiters], or null before the first full fill-up. */
+    @Synchronized
+    fun fuelEstimate(tankLiters: Int): FuelEstimate? = _fuel.value.estimate(odometer.totalKm, tankLiters.toDouble())
+
     /** The distance since the last full fill-up that is offered as the default in the fill-up form. */
     @Synchronized
     fun suggestedKm(): Double? = _fuel.value.suggestedKm(odometer.totalKm)
@@ -67,7 +113,9 @@ class DriveLog(context: Context) {
     fun recordRefuel(now: Long, liters: Double, amountVnd: Long, full: Boolean, distanceKm: Double?): Refuel {
         val book = _fuel.value.record(now, liters, amountVnd, full, odometer.totalKm, distanceKm)
         _fuel.value = book
+        pendingRefuels = pendingRefuels + book.last!!
         saveFuel()
+        savePendingRefuels()
         saveTotal()
         return book.last!!
     }
@@ -104,6 +152,28 @@ class DriveLog(context: Context) {
             .putDoubleOrRemove(REFUEL_PERIOD_LITERS, last?.litersInPeriod)
             .apply()
     }
+
+    // One fill-up a line: at|litres|amount|full|distance|litres in the period, the last two empty when unknown.
+    private fun savePendingRefuels() {
+        val text = pendingRefuels.joinToString("\n") { "${it.at}|${it.liters}|${it.amountVnd}|${it.full}|${it.distanceKm ?: ""}|${it.litersInPeriod ?: ""}" }
+        prefs.edit().putString(PENDING_REFUELS, text).apply()
+    }
+
+    private fun readPendingRefuels(): List<Refuel> =
+        prefs.getString(PENDING_REFUELS, "").orEmpty().lineSequence().mapNotNull { line ->
+            val part = line.split("|")
+            val at = part.getOrNull(0)?.toLongOrNull() ?: return@mapNotNull null
+            val liters = part.getOrNull(1)?.toDoubleOrNull() ?: return@mapNotNull null
+            Refuel(
+                id = at.toString(),
+                at = at,
+                liters = liters,
+                amountVnd = part.getOrNull(2)?.toLongOrNull() ?: 0,
+                full = part.getOrNull(3) == "true",
+                distanceKm = part.getOrNull(4)?.toDoubleOrNull(),
+                litersInPeriod = part.getOrNull(5)?.toDoubleOrNull(),
+            )
+        }.toList()
 
     private fun readTrip(): TripMeter {
         val startedAt = prefs.getLongOrNull(RUN_STARTED_AT)
@@ -145,6 +215,9 @@ class DriveLog(context: Context) {
     private companion object {
         const val SAVE_EVERY_KM = 0.05
 
+        const val OPEN_TRIP = "open_trip_id"
+        const val PENDING_REFUELS = "pending_refuels"
+
         const val TOTAL_KM = "total_km"
         const val RUN_STARTED_AT = "run_started_at"
         const val RUN_START_KM = "run_start_km"
@@ -180,6 +253,9 @@ private fun SharedPreferences.Editor.putDoubleOrRemove(key: String, value: Doubl
 
 private fun SharedPreferences.Editor.putLongOrRemove(key: String, value: Long?): SharedPreferences.Editor =
     if (value == null) remove(key) else putLong(key, value)
+
+private fun SharedPreferences.Editor.putStringOrRemove(key: String, value: String?): SharedPreferences.Editor =
+    if (value == null) remove(key) else putString(key, value)
 
 private fun SharedPreferences.Editor.putBooleanOrRemove(key: String, value: Boolean?): SharedPreferences.Editor =
     if (value == null) remove(key) else putBoolean(key, value)

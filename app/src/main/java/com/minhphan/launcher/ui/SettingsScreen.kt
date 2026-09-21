@@ -64,12 +64,14 @@ import com.minhphan.launcher.data.ThemeMode
 import com.minhphan.launcher.data.sunTimes
 import com.minhphan.launcher.diagnostics.findActivity
 import com.minhphan.launcher.obd.AUTO_ADDRESS
+import com.minhphan.launcher.obd.MAX_OBD_FIELDS
+import com.minhphan.launcher.obd.ObdField
+import com.minhphan.launcher.obd.ObdState
 import com.minhphan.launcher.obd.SIMULATED_ADDRESS
 import com.minhphan.launcher.obd.bondedDevices
 import com.minhphan.cloud.AccountState
 import com.minhphan.cloud.SignInException
 import com.minhphan.launcher.sync.SyncState
-import com.minhphan.launcher.sync.TestResult
 import com.minhphan.launcher.update.UpdateState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -175,8 +177,16 @@ private fun GeneralSettings(
             ObdDeviceSettings(settings.obdAddress, bluetooth, viewModel::setObdAddress)
         }
 
+        SettingsCard(R.string.settings_obd_fields_title) {
+            ObdFieldSettings(settings.obdFields, viewModel)
+        }
+
         SettingsCard(R.string.sync_title) {
             TripSyncSettings(settings, viewModel)
+        }
+
+        SettingsCard(R.string.settings_fuel_title) {
+            TankSize(settings.tankLiters, viewModel::setTankLiters)
         }
 
         SettingsCard(R.string.settings_about_title) {
@@ -251,6 +261,27 @@ private fun RadioRow(selected: Boolean, label: String, onClick: () -> Unit) {
     }
 }
 
+/** The size of the fuel tank, which the estimate of the fuel left counts down from. */
+@Composable
+private fun TankSize(liters: Int, onChange: (Int) -> Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = stringResource(R.string.settings_tank_label, liters),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+        FilledTonalButton(onClick = { onChange(liters - 1) }, modifier = Modifier.heightIn(min = 56.dp)) {
+            Text("-", style = MaterialTheme.typography.titleLarge)
+        }
+        Spacer(Modifier.width(8.dp))
+        FilledTonalButton(onClick = { onChange(liters + 1) }, modifier = Modifier.heightIn(min = 56.dp)) {
+            Text("+", style = MaterialTheme.typography.titleLarge)
+        }
+    }
+    Hint(stringResource(R.string.settings_tank_hint))
+}
+
 /** Signing in to the account the trips go to, and whether they are recorded. */
 @Composable
 private fun TripSyncSettings(settings: LauncherSettings, viewModel: LauncherViewModel) {
@@ -283,36 +314,8 @@ private fun TripSyncSettings(settings: LauncherSettings, viewModel: LauncherView
             SwitchRow(settings.syncTrips, stringResource(R.string.sync_switch), stringResource(R.string.sync_switch_hint), viewModel::setSyncTrips)
             if (settings.syncTrips && !hasLocationPermission(context)) Hint(stringResource(R.string.sync_needs_location))
             if (settings.syncTrips) SyncStatusLines(viewModel.syncState.collectAsStateWithLifecycle().value)
-            TestSend(viewModel)
             ActionButton(stringResource(R.string.sync_sign_out), viewModel::signOut)
         }
-    }
-}
-
-/** A button that sends the engine data to Firebase now and says whether it got there, without driving anywhere. */
-@Composable
-private fun TestSend(viewModel: LauncherViewModel) {
-    val scope = rememberCoroutineScope()
-    var sending by remember { mutableStateOf(false) }
-    var outcome by remember { mutableStateOf<LauncherViewModel.TestOutcome?>(null) }
-
-    ActionButton(stringResource(if (sending) R.string.sync_testing else R.string.sync_test)) {
-        if (sending) return@ActionButton
-        sending = true
-        outcome = null
-        scope.launch {
-            outcome = viewModel.sendTest()
-            sending = false
-        }
-    }
-    outcome?.let {
-        Hint(
-            when (val result = it.result) {
-                TestResult.Confirmed -> stringResource(if (it.realEngine) R.string.sync_test_ok_real else R.string.sync_test_ok_sample)
-                TestResult.NotConfirmed -> stringResource(R.string.sync_test_timeout)
-                is TestResult.Failed -> stringResource(R.string.sync_test_failed, result.reason)
-            },
-        )
     }
 }
 
@@ -362,10 +365,31 @@ private fun SwitchRow(checked: Boolean, label: String, hint: String, onChange: (
     ) {
         Column(Modifier.weight(1f)) {
             Text(label, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-            Text(hint, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (hint.isNotEmpty()) Text(hint, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Switch(checked = checked, onCheckedChange = null)
     }
+}
+
+/**
+ * Which values the tiles on Home show. A value the car has said it does not have is marked, so the list of what
+ * can be chosen is honest about what will stay empty; the list is read from the car when the adapter connects.
+ */
+@Composable
+private fun ObdFieldSettings(chosen: List<ObdField>, viewModel: LauncherViewModel) {
+    val state by viewModel.obd.collectAsStateWithLifecycle()
+    val supported = when (val s = state) {
+        is ObdState.Connected -> s.values.supported
+        is ObdState.Connecting -> s.last?.supported
+        is ObdState.Problem -> s.last?.supported
+    }
+    Hint(stringResource(R.string.settings_obd_fields_hint, MAX_OBD_FIELDS))
+    ObdField.entries.forEach { field ->
+        val missing = supported != null && field.pid != null && field.pid.code !in supported
+        val name = stringResource(field.label) + if (missing) " (${stringResource(R.string.settings_obd_field_missing)})" else ""
+        SwitchRow(field in chosen, name, "") { on -> viewModel.setObdField(field, on) }
+    }
+    if (chosen.size >= MAX_OBD_FIELDS) Hint(stringResource(R.string.settings_obd_fields_full, MAX_OBD_FIELDS))
 }
 
 /** Which paired Bluetooth device is the OBD adapter, with the way to pair one and to allow Bluetooth. */

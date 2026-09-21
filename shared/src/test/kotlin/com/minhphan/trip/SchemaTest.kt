@@ -24,7 +24,7 @@ class SchemaTest {
         val point = TripPoint(5_000, LatLon(21.0, 105.8), 61.5f, EngineData(rpm = 2100, coolantC = 88, voltage = 14.2f))
         assertEquals(point, tripPointFrom(firestoreLike(point.toMap())))
 
-        val live = LiveStatus(LatLon(21.0, 105.8), 40f, true, 7_000, EngineData(intakeC = 38, fuelTrimPercent = -4))
+        val live = LiveStatus(LatLon(21.0, 105.8), 40f, true, 7_000, EngineData(intakeC = 38, fuelTrimPercent = -4), fuel = FuelEstimate(31.5, 410.0, 63, 13.0, assumed = false))
         assertEquals(live, liveStatusFrom(firestoreLike(live.toMap())))
     }
 
