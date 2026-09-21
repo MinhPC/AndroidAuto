@@ -109,4 +109,20 @@
     <string name="trip_channel_name">Trip recording</string>
     <string name="trip_notification_title">Recording the trip</string>
     <string name="trip_notification_text">Position and car data are sent to your account.</string>
+    <string name="sync_status_recording">Trip recording: running</string>
+    <string name="sync_status_stopped">Trip recording: not running. Check the location permission and open the home screen again.</string>
+    <string name="sync_status_gps">GPS: last fix %1$s (%2$d points)</string>
+    <string name="sync_status_gps_none">GPS: no signal yet. The car needs a clear view of the sky.</string>
+    <string name="sync_status_sent">Firebase: confirmed %1$s, %2$d waiting</string>
+    <string name="sync_status_sent_none">Firebase: nothing confirmed yet (%1$d sent, %2$d waiting)</string>
+    <string name="sync_status_error">Firebase error: %1$s</string>
+    <string name="sync_ago_seconds">%1$d s ago</string>
+    <string name="sync_ago_minutes">%1$d min ago</string>
+    <string name="sync_ago_hours">%1$d h ago</string>
+    <string name="sync_test">Send a test to Firebase</string>
+    <string name="sync_testing">Sending…</string>
+    <string name="sync_test_ok_real">Sent to Firebase and read back, with the real engine data from the OBD adapter.</string>
+    <string name="sync_test_ok_sample">Sent to Firebase and read back, with sample engine data because the OBD adapter is not connected. The data is at users/&lt;uid&gt;/live/car.</string>
+    <string name="sync_test_timeout">Firebase did not confirm within 10 seconds. Check the connection of the car screen; the data is kept and sent when there is one.</string>
+    <string name="sync_test_failed">Firebase refused: %1$s</string>
 </resources>

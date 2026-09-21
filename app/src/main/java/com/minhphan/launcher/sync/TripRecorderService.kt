@@ -76,6 +76,7 @@ class TripRecorderService : Service() {
     private fun startRecording(app: LauncherApplication) {
         val tracker = TripTracker(ZoneId.systemDefault()).also { this.tracker = it }
         val uploader = app.tripUploader
+        app.syncStatus.recording(true)
         // The one thread of the process for this work, so a service that is stopped and started again cannot overlap.
         val scope = CoroutineScope(SupervisorJob() + app.recorderDispatcher).also { this.scope = it }
         var engine = EngineData()
@@ -96,6 +97,7 @@ class TripRecorderService : Service() {
                 val fix = location.toFix()
                 lastFixTime = fix.timeMs
                 lastFixElapsed = SystemClock.elapsedRealtime()
+                app.syncStatus.fix()
                 uploader.handle(tracker.onFix(fix, engine))
             }
             // The flow ends when there is no location permission or no GPS: nothing to record.
@@ -114,6 +116,7 @@ class TripRecorderService : Service() {
         }
         scope = null
         this.tracker = null
+        (application as LauncherApplication).syncStatus.recording(false)
         super.onDestroy()
     }
 
@@ -165,7 +168,7 @@ private fun Location.toFix() = Fix(
     speedKmh = if (hasSpeed()) speed * 3.6f else 0f,
 )
 
-private fun ObdValues.toEngine() = EngineData(
+internal fun ObdValues.toEngine() = EngineData(
     rpm = rpm,
     coolantC = coolantC,
     oilC = oilC,

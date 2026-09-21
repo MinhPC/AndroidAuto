@@ -49,6 +49,11 @@ Không có file này, launcher vẫn build và chạy, chỉ là phần đồng 
 2. Trên màn hình xe: **Cài đặt → Hành trình & đồng bộ → Đăng nhập Google** bằng tài khoản đã bật ở bước 2.
    (Cần Google Play Services trên màn hình xe.)
 3. Cho phép quyền vị trí khi launcher hỏi. Khi đang ghi, có thông báo nhỏ "Đang ghi hành trình".
+4. **Thử kết nối trước khi lái**: bấm **Gửi thử lên Firebase** ngay dưới công tắc. Launcher gửi thông số động cơ (thật
+   nếu bộ đọc OBD đang kết nối, không thì mẫu) vào `users/<uid>/live/car` rồi đọc lại từ server, và báo kết quả trên
+   màn hình: thành công, chưa được xác nhận sau 10 giây (kiểm tra mạng), hoặc bị từ chối kèm lý do (thường là
+   `PERMISSION_DENIED` khi rules chưa được Publish). Tài liệu có thêm trường `test: true`; Home Assistant sẽ hiện các
+   cảm biến động cơ từ đó. Các dòng trạng thái bên trên cho biết GPS và Firebase đang ở đâu khi lái thật.
 
 ## 6. Cài integration cho Home Assistant
 

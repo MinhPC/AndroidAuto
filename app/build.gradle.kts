@@ -14,8 +14,8 @@ if (file("google-services.json").exists()) {
 }
 
 // Bump both on every release. The updater compares versionCode, so it must always increase.
-val appVersionCode = 11
-val appVersionName = "1.7.0"
+val appVersionCode = 12
+val appVersionName = "1.7.1"
 
 // HTTPS folder that hosts update.json and the APKs (see gradle.properties). Empty disables in-app updates.
 val updateBaseUrl = providers.gradleProperty("UPDATE_BASE_URL").getOrElse("").trim().trimEnd('/')
@@ -74,6 +74,7 @@ dependencies {
 
     implementation(project(":shared"))
     implementation(project(":cloud"))
+    implementation(libs.coroutines.play.services)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.firestore)
 

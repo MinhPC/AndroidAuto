@@ -4,6 +4,7 @@ import android.app.Application
 import com.minhphan.launcher.data.SettingsStore
 import com.minhphan.launcher.obd.ObdHub
 import com.minhphan.cloud.CloudAccount
+import com.minhphan.launcher.sync.SyncStatus
 import com.minhphan.launcher.sync.TripUploader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -28,5 +29,6 @@ class LauncherApplication : Application() {
     val settingsStore by lazy { SettingsStore(this) }
     val obdHub by lazy { ObdHub(this, settingsStore.settings, appScope) }
     val cloud by lazy { CloudAccount(this) }
-    val tripUploader by lazy { TripUploader(this, cloud) }
+    val syncStatus = SyncStatus()
+    val tripUploader by lazy { TripUploader(this, cloud, syncStatus) }
 }

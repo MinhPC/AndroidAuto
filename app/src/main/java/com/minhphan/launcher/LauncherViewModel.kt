@@ -14,6 +14,15 @@ import com.minhphan.launcher.data.ThemeMode
 import com.minhphan.launcher.diagnostics.DiagnosticLine
 import com.minhphan.launcher.diagnostics.runConnectivityTest
 import com.minhphan.launcher.obd.ObdState
+import com.minhphan.launcher.data.LastLocationStore
+import com.minhphan.launcher.sync.SyncState
+import com.minhphan.launcher.sync.TestResult
+import com.minhphan.launcher.sync.toEngine
+import com.minhphan.trip.EngineData
+import com.minhphan.trip.LatLon
+import com.minhphan.trip.LiveStatus
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.minhphan.cloud.AccountState
 import com.minhphan.launcher.update.UpdateInfo
 import com.minhphan.launcher.update.UpdateManager
@@ -57,6 +66,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     val account: StateFlow<AccountState> = launcher.cloud.state
 
+    /** What the trip recorder is doing, shown in Settings. */
+    val syncState: StateFlow<SyncState> = launcher.syncStatus.state
+
     private val _connectivity = MutableStateFlow<List<DiagnosticLine>>(emptyList())
 
     /** Lines from the last network test (empty until it has run). */
@@ -85,6 +97,26 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     suspend fun signInWithGoogle(activity: Activity): Result<Unit> = launcher.cloud.signInWithGoogle(activity)
 
     fun signOut() = launcher.cloud.signOut()
+
+    /** What a test send did, and whether it used the real engine data of the car or a made-up sample. */
+    data class TestOutcome(val result: TestResult, val realEngine: Boolean)
+
+    /**
+     * Sends the car's current engine data (or a sample if the OBD adapter is not connected) to Firebase, at the last
+     * known position, and reads it back: the way to check the connection before the car drives anywhere.
+     */
+    suspend fun sendTest(): TestOutcome {
+        val real = (launcher.obdHub.states.value as? ObdState.Connected)?.values?.toEngine()
+        val position = withContext(Dispatchers.IO) { LastLocationStore(getApplication()).current() }
+        val live = LiveStatus(
+            position = position?.let { LatLon(it.latitude, it.longitude) } ?: SAMPLE_POSITION,
+            speedKmh = 0f,
+            moving = false,
+            updatedAt = System.currentTimeMillis(),
+            engine = real ?: SAMPLE_ENGINE,
+        )
+        return TestOutcome(launcher.tripUploader.sendTest(live), realEngine = real != null)
+    }
 
     fun setSyncTrips(value: Boolean) = settingsStore.setSyncTrips(value)
 
@@ -138,5 +170,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     companion object {
         const val MAX_FAVORITES = 5
+
+        private val SAMPLE_POSITION = LatLon(21.0285, 105.8542) // Hoan Kiem, Hanoi
+        private val SAMPLE_ENGINE = EngineData(
+            rpm = 2100, coolantC = 88, oilC = 95, loadPercent = 35, throttlePercent = 18, fuelPercent = 55, voltage = 14.1f,
+        )
     }
 }

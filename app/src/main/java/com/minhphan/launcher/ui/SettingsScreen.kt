@@ -37,7 +37,9 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -66,7 +68,10 @@ import com.minhphan.launcher.obd.SIMULATED_ADDRESS
 import com.minhphan.launcher.obd.bondedDevices
 import com.minhphan.cloud.AccountState
 import com.minhphan.cloud.SignInException
+import com.minhphan.launcher.sync.SyncState
+import com.minhphan.launcher.sync.TestResult
 import com.minhphan.launcher.update.UpdateState
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.ZoneId
@@ -277,9 +282,70 @@ private fun TripSyncSettings(settings: LauncherSettings, viewModel: LauncherView
             Hint(stringResource(R.string.sync_signed_in_as, state.email ?: state.uid))
             SwitchRow(settings.syncTrips, stringResource(R.string.sync_switch), stringResource(R.string.sync_switch_hint), viewModel::setSyncTrips)
             if (settings.syncTrips && !hasLocationPermission(context)) Hint(stringResource(R.string.sync_needs_location))
+            if (settings.syncTrips) SyncStatusLines(viewModel.syncState.collectAsStateWithLifecycle().value)
+            TestSend(viewModel)
             ActionButton(stringResource(R.string.sync_sign_out), viewModel::signOut)
         }
     }
+}
+
+/** A button that sends the engine data to Firebase now and says whether it got there, without driving anywhere. */
+@Composable
+private fun TestSend(viewModel: LauncherViewModel) {
+    val scope = rememberCoroutineScope()
+    var sending by remember { mutableStateOf(false) }
+    var outcome by remember { mutableStateOf<LauncherViewModel.TestOutcome?>(null) }
+
+    ActionButton(stringResource(if (sending) R.string.sync_testing else R.string.sync_test)) {
+        if (sending) return@ActionButton
+        sending = true
+        outcome = null
+        scope.launch {
+            outcome = viewModel.sendTest()
+            sending = false
+        }
+    }
+    outcome?.let {
+        Hint(
+            when (val result = it.result) {
+                TestResult.Confirmed -> stringResource(if (it.realEngine) R.string.sync_test_ok_real else R.string.sync_test_ok_sample)
+                TestResult.NotConfirmed -> stringResource(R.string.sync_test_timeout)
+                is TestResult.Failed -> stringResource(R.string.sync_test_failed, result.reason)
+            },
+        )
+    }
+}
+
+/** Where the recording stands: running, hearing the GPS, and whether Firebase has confirmed what was sent. */
+@Composable
+private fun SyncStatusLines(state: SyncState) {
+    val context = LocalContext.current
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1_000)
+            now = System.currentTimeMillis()
+        }
+    }
+    fun ago(then: Long): String {
+        val seconds = ((now - then) / 1_000).coerceAtLeast(0)
+        return when {
+            seconds < 60 -> context.getString(R.string.sync_ago_seconds, seconds)
+            seconds < 3_600 -> context.getString(R.string.sync_ago_minutes, seconds / 60)
+            else -> context.getString(R.string.sync_ago_hours, seconds / 3_600)
+        }
+    }
+
+    Hint(stringResource(if (state.recording) R.string.sync_status_recording else R.string.sync_status_stopped))
+    Hint(
+        if (state.lastFixAt == 0L) stringResource(R.string.sync_status_gps_none)
+        else stringResource(R.string.sync_status_gps, ago(state.lastFixAt), state.fixes),
+    )
+    Hint(
+        if (state.lastConfirmedAt == 0L) stringResource(R.string.sync_status_sent_none, state.writes, state.pending)
+        else stringResource(R.string.sync_status_sent, ago(state.lastConfirmedAt), state.pending),
+    )
+    state.lastError?.let { Hint(stringResource(R.string.sync_status_error, it)) }
 }
 
 /** A switch with what it does written under it. */
