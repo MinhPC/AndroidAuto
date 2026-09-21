@@ -19,6 +19,8 @@ data class LauncherSettings(
     val theme: ThemeMode = ThemeMode.Auto,
     /** Bluetooth address of the OBD adapter; empty picks a paired one by its name. */
     val obdAddress: String = "",
+    /** Record trips and send them to the signed-in account. Does nothing until an account is signed in. */
+    val syncTrips: Boolean = true,
 )
 
 /** Persists [LauncherSettings] next to the dock apps in the "launcher" preferences. */
@@ -37,14 +39,21 @@ class SettingsStore(context: Context) {
         _settings.value = _settings.value.copy(obdAddress = value)
     }
 
+    fun setSyncTrips(value: Boolean) {
+        prefs.edit().putBoolean(KEY_SYNC, value).apply()
+        _settings.value = _settings.value.copy(syncTrips = value)
+    }
+
     private fun read() = LauncherSettings(
         theme = enumOrDefault(prefs.getString(KEY_THEME, null), ThemeMode.Auto),
         obdAddress = prefs.getString(KEY_OBD, "").orEmpty(),
+        syncTrips = prefs.getBoolean(KEY_SYNC, true),
     )
 
     private companion object {
         const val KEY_THEME = "theme_mode"
         const val KEY_OBD = "obd_address"
+        const val KEY_SYNC = "sync_trips"
     }
 }
 

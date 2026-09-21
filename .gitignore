@@ -11,3 +11,17 @@ local.properties
 *.aab
 /art-source/
 /screenshots/
+
+# Firebase project configuration: per project, kept out of the repository.
+google-services.json
+
+# Python test caches (home_assistant/)
+__pycache__/
+.pytest_cache/
+
+# Key file written by home_assistant/tools/mock_firestore.py
+mock_service_account.json
+
+# Gradle output of the library modules
+/cloud/build/
+/shared/build/

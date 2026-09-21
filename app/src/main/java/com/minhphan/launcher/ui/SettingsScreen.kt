@@ -26,17 +26,21 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +51,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.minhphan.launcher.BuildConfig
 import com.minhphan.launcher.LauncherViewModel
 import com.minhphan.launcher.R
@@ -55,10 +60,14 @@ import com.minhphan.launcher.data.LastLocationStore
 import com.minhphan.launcher.data.LauncherSettings
 import com.minhphan.launcher.data.ThemeMode
 import com.minhphan.launcher.data.sunTimes
+import com.minhphan.launcher.diagnostics.findActivity
 import com.minhphan.launcher.obd.AUTO_ADDRESS
 import com.minhphan.launcher.obd.SIMULATED_ADDRESS
 import com.minhphan.launcher.obd.bondedDevices
+import com.minhphan.cloud.AccountState
+import com.minhphan.cloud.SignInException
 import com.minhphan.launcher.update.UpdateState
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -161,6 +170,10 @@ private fun GeneralSettings(
             ObdDeviceSettings(settings.obdAddress, bluetooth, viewModel::setObdAddress)
         }
 
+        SettingsCard(R.string.sync_title) {
+            TripSyncSettings(settings, viewModel)
+        }
+
         SettingsCard(R.string.settings_about_title) {
             UpdateBar(
                 versionName = viewModel.versionName,
@@ -230,6 +243,62 @@ private fun RadioRow(selected: Boolean, label: String, onClick: () -> Unit) {
         RadioButton(selected = selected, onClick = null)
         Spacer(Modifier.width(12.dp))
         Text(label, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+    }
+}
+
+/** Signing in to the account the trips go to, and whether they are recorded. */
+@Composable
+private fun TripSyncSettings(settings: LauncherSettings, viewModel: LauncherViewModel) {
+    val account by viewModel.account.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var signingIn by remember { mutableStateOf(false) }
+
+    when (val state = account) {
+        AccountState.NotConfigured -> Hint(stringResource(R.string.sync_not_configured))
+        AccountState.SignedOut -> {
+            Hint(stringResource(R.string.sync_signed_out_hint))
+            ActionButton(stringResource(if (signingIn) R.string.sync_signing_in else R.string.sync_sign_in)) {
+                val activity = context.findActivity()
+                if (signingIn || activity == null) return@ActionButton
+                signingIn = true
+                scope.launch {
+                    val result = viewModel.signInWithGoogle(activity)
+                    signingIn = false
+                    result.exceptionOrNull()?.let { error ->
+                        if ((error as? SignInException)?.cancelled != true) {
+                            Toast.makeText(context, context.getString(R.string.sync_sign_in_failed, error.message), Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+            }
+        }
+        is AccountState.SignedIn -> {
+            Hint(stringResource(R.string.sync_signed_in_as, state.email ?: state.uid))
+            SwitchRow(settings.syncTrips, stringResource(R.string.sync_switch), stringResource(R.string.sync_switch_hint), viewModel::setSyncTrips)
+            if (settings.syncTrips && !hasLocationPermission(context)) Hint(stringResource(R.string.sync_needs_location))
+            ActionButton(stringResource(R.string.sync_sign_out), viewModel::signOut)
+        }
+    }
+}
+
+/** A switch with what it does written under it. */
+@Composable
+private fun SwitchRow(checked: Boolean, label: String, hint: String, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 64.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onChange)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+            Text(hint, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = checked, onCheckedChange = null)
     }
 }
 

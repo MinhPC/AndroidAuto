@@ -14,6 +14,10 @@
     <uses-feature
         android:name="android.hardware.bluetooth"
         android:required="false" />
+    <!-- Records trips while another app is on screen: a foreground service that listens to the GPS. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- In-app updates: hands the downloaded APK to the system installer. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
@@ -52,6 +56,7 @@
     </queries>
 
     <application
+        android:name=".LauncherApplication"
         android:allowBackup="false"
         android:enableOnBackInvokedCallback="true"
         android:icon="@mipmap/ic_launcher"
@@ -85,6 +90,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".sync.TripRecorderService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
 
         <receiver
             android:name=".update.InstallResultReceiver"

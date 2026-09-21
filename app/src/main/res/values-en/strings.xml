@@ -95,4 +95,18 @@
     </string-array>
     <string name="date_pattern">dd/MM/yyyy</string>
     <string name="date_format">%1$s, %2$s</string>
+    <string name="sync_title">Trips &amp; sync</string>
+    <string name="sync_not_configured">This build is not linked to a Firebase project, so trips cannot be sent. See TRIP_SYNC.md.</string>
+    <string name="sync_signed_out_hint">Sign in with the same Google account as the phone app to see how far the car went by day, week, month and year.</string>
+    <string name="sync_sign_in">Sign in with Google</string>
+    <string name="sync_signing_in">Signing in…</string>
+    <string name="sync_signed_in_as">Signed in: %1$s</string>
+    <string name="sync_sign_out">Sign out</string>
+    <string name="sync_switch">Record and send trips</string>
+    <string name="sync_switch_hint">Sends the position, distance and engine data to your account while the car drives. The OBD adapter stays connected meanwhile.</string>
+    <string name="sync_sign_in_failed">Sign-in failed: %1$s</string>
+    <string name="sync_needs_location">Trips need the location permission. Allow it on the home screen.</string>
+    <string name="trip_channel_name">Trip recording</string>
+    <string name="trip_notification_title">Recording the trip</string>
+    <string name="trip_notification_text">Position and car data are sent to your account.</string>
 </resources>

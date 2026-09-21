@@ -95,4 +95,18 @@
     </string-array>
     <string name="date_pattern">dd/MM/yyyy</string>
     <string name="date_format">%1$s, %2$s</string>
+    <string name="sync_title">Hành trình &amp; đồng bộ</string>
+    <string name="sync_not_configured">Bản này chưa gắn với project Firebase nên chưa gửi được hành trình. Xem TRIP_SYNC.md.</string>
+    <string name="sync_signed_out_hint">Đăng nhập cùng tài khoản Google với app điện thoại để xem quãng đường xe chạy theo ngày, tuần, tháng, năm.</string>
+    <string name="sync_sign_in">Đăng nhập Google</string>
+    <string name="sync_signing_in">Đang đăng nhập…</string>
+    <string name="sync_signed_in_as">Đã đăng nhập: %1$s</string>
+    <string name="sync_sign_out">Đăng xuất</string>
+    <string name="sync_switch">Ghi và gửi hành trình</string>
+    <string name="sync_switch_hint">Gửi vị trí, quãng đường và thông số động cơ lên tài khoản của bạn khi xe chạy. Bộ đọc OBD được giữ kết nối trong lúc này.</string>
+    <string name="sync_sign_in_failed">Đăng nhập không thành công: %1$s</string>
+    <string name="sync_needs_location">Cần quyền vị trí để ghi hành trình. Cấp quyền ở màn hình chính.</string>
+    <string name="trip_channel_name">Ghi hành trình</string>
+    <string name="trip_notification_title">Đang ghi hành trình</string>
+    <string name="trip_notification_text">Vị trí và thông số xe được gửi lên tài khoản của bạn.</string>
 </resources>

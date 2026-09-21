@@ -1,0 +1,12 @@
+{
+  "domain": "car_trips",
+  "name": "Car Trips",
+  "codeowners": [],
+  "config_flow": true,
+  "documentation": "https://github.com/MinhPC/AndroidAuto/blob/main/homeassistant/README.md",
+  "integration_type": "device",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/MinhPC/AndroidAuto/issues",
+  "requirements": [],
+  "version": "1.0.0"
+}

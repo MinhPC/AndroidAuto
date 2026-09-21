@@ -181,5 +181,5 @@ private fun GpsDot(hasSignal: Boolean, modifier: Modifier = Modifier) {
     )
 }
 
-private fun hasLocationPermission(context: Context) =
+internal fun hasLocationPermission(context: Context) =
     ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED

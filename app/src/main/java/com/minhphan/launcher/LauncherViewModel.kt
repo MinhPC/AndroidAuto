@@ -1,5 +1,6 @@
 package com.minhphan.launcher
 
+import android.app.Activity
 import android.app.Application
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -9,13 +10,11 @@ import com.minhphan.launcher.data.AppInfo
 import com.minhphan.launcher.data.AppRepository
 import com.minhphan.launcher.data.FavoritesStore
 import com.minhphan.launcher.data.LauncherSettings
-import com.minhphan.launcher.data.SettingsStore
 import com.minhphan.launcher.data.ThemeMode
 import com.minhphan.launcher.diagnostics.DiagnosticLine
 import com.minhphan.launcher.diagnostics.runConnectivityTest
 import com.minhphan.launcher.obd.ObdState
-import com.minhphan.launcher.obd.hasBluetoothPermission
-import com.minhphan.launcher.obd.obdStates
+import com.minhphan.cloud.AccountState
 import com.minhphan.launcher.update.UpdateInfo
 import com.minhphan.launcher.update.UpdateManager
 import com.minhphan.launcher.update.UpdateState
@@ -24,21 +23,18 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.conflate
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalCoroutinesApi::class)
 class LauncherViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = AppRepository(application)
     private val store = FavoritesStore(application)
-    private val settingsStore = SettingsStore(application)
+    private val launcher = application as LauncherApplication
+    private val settingsStore = launcher.settingsStore
     private val updates = UpdateManager(application, viewModelScope)
 
     val versionName: String = updates.currentVersionName
@@ -56,16 +52,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         keys.orEmpty().mapNotNull(byKey::get)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    private val bluetoothGranted = MutableStateFlow(hasBluetoothPermission(application))
+    /** What the OBD adapter reports; see [com.minhphan.launcher.obd.ObdHub]. */
+    val obd: StateFlow<ObdState> = launcher.obdHub.states
 
-    /**
-     * What the OBD adapter reports. Connects while the home screen is showing and lets go a few seconds after it
-     * is not, so the adapter is free for other apps; the address and the permission are followed live. Once it
-     * has let go the last state is forgotten, so coming back never shows an old reading as if it were live.
-     */
-    val obd: StateFlow<ObdState> = combine(settings.map { it.obdAddress }.distinctUntilChanged(), bluetoothGranted, ::Pair)
-        .flatMapLatest { (address, granted) -> obdStates(application, address, granted) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, replayExpirationMillis = 0), ObdState.Connecting())
+    val account: StateFlow<AccountState> = launcher.cloud.state
 
     private val _connectivity = MutableStateFlow<List<DiagnosticLine>>(emptyList())
 
@@ -90,9 +80,13 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun setBluetoothGranted(granted: Boolean) {
-        bluetoothGranted.value = granted
-    }
+    fun setBluetoothGranted(granted: Boolean) = launcher.obdHub.setBluetoothGranted(granted)
+
+    suspend fun signInWithGoogle(activity: Activity): Result<Unit> = launcher.cloud.signInWithGoogle(activity)
+
+    fun signOut() = launcher.cloud.signOut()
+
+    fun setSyncTrips(value: Boolean) = settingsStore.setSyncTrips(value)
 
     fun onHomePressed() {
         _homeEvents.tryEmit(Unit)

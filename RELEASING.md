@@ -4,6 +4,8 @@ The launcher updates itself from the newest GitHub Release of this repository
 (`UPDATE_BASE_URL` in `gradle.properties`). Each release must contain two assets:
 `update.json` and `CarLauncher-<version>.apk`.
 
+0. The trip sync needs `app/google-services.json` (not in the repository; see [TRIP_SYNC.md](TRIP_SYNC.md)). Build the
+   release on a machine that has it, or the APK will say the sync is not set up.
 1. In `app/build.gradle.kts` raise **both** `appVersionCode` (must increase every release) and `appVersionName`.
 2. Write what changed in `release-notes.txt` (UTF-8, shown in the app next to the update button).
 3. Run `./gradlew publishUpdateFiles`. It builds the signed release APK and writes

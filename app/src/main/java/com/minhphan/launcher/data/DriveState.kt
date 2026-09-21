@@ -38,7 +38,7 @@ fun nextMoving(wasMoving: Boolean, speedKmh: Float): Boolean =
 
 /** GPS fixes about once a second. The caller must hold ACCESS_FINE_LOCATION; without it the flow just ends. */
 @SuppressLint("MissingPermission")
-private fun gpsLocations(context: Context): Flow<Location> = callbackFlow {
+internal fun gpsLocations(context: Context): Flow<Location> = callbackFlow {
     val manager = context.getSystemService(LocationManager::class.java)
     val listener = object : LocationListenerCompat {
         override fun onLocationChanged(location: Location) {

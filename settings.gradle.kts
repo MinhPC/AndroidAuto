@@ -20,4 +20,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Launcher"
-include(":app")
+include(":app", ":shared", ":cloud")

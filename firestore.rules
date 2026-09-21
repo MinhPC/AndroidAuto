@@ -1,0 +1,11 @@
+rules_version = '2';
+
+// Everything the car and the phone app store lives under users/{uid}; only the signed-in user with that uid
+// may read or write it. Nothing else in the database is reachable.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{uid}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}

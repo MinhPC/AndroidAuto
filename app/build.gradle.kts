@@ -7,9 +7,15 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// The trip sync needs the project's google-services.json in this folder (see TRIP_SYNC.md). Without it the app
+// still builds and runs, and Settings says the sync is not set up.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 // Bump both on every release. The updater compares versionCode, so it must always increase.
-val appVersionCode = 10
-val appVersionName = "1.6.0"
+val appVersionCode = 11
+val appVersionName = "1.7.0"
 
 // HTTPS folder that hosts update.json and the APKs (see gradle.properties). Empty disables in-app updates.
 val updateBaseUrl = providers.gradleProperty("UPDATE_BASE_URL").getOrElse("").trim().trimEnd('/')
@@ -65,6 +71,11 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.compose.material3)
+
+    implementation(project(":shared"))
+    implementation(project(":cloud"))
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.firestore)
 
     testImplementation(libs.junit)
     testImplementation(libs.json)

@@ -1,0 +1,66 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Hành trình xe",
+        "description": "Đọc các chuyến đi mà launcher trên xe gửi lên Firebase. Tạo một service account với vai trò Cloud Datastore Viewer rồi dán khoá JSON của nó vào đây.",
+        "data": {
+          "service_account": "Khoá service account (JSON)",
+          "uid": "User ID trên Firebase",
+          "name": "Tên"
+        },
+        "data_description": {
+          "uid": "User UID của tài khoản mà launcher đang đăng nhập: Firebase console > Authentication > Users > User UID."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Khoá không còn được chấp nhận",
+        "description": "Dán khoá JSON service account mới.",
+        "data": {
+          "service_account": "Khoá service account (JSON)"
+        }
+      }
+    },
+    "error": {
+      "invalid_service_account": "Đây không phải khoá JSON của service account.",
+      "invalid_auth": "Google không chấp nhận khoá này. Kiểm tra service account còn tồn tại và khoá chưa bị xoá.",
+      "no_permission": "Service account không được đọc Firestore. Hãy cấp vai trò Cloud Datastore Viewer.",
+      "cannot_connect": "Không đọc được Firestore. Kiểm tra kết nối và Firestore đã được tạo trong project."
+    },
+    "abort": {
+      "already_configured": "Xe này đã được thiết lập.",
+      "reauth_successful": "Đã dùng khoá mới."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "moving": { "name": "Đang chạy" }
+    },
+    "sensor": {
+      "distance_today": { "name": "Quãng đường hôm nay" },
+      "distance_week": { "name": "Quãng đường tuần này" },
+      "distance_month": { "name": "Quãng đường tháng này" },
+      "distance_year": { "name": "Quãng đường năm nay" },
+      "trips_today": { "name": "Số chuyến hôm nay" },
+      "driving_time_today": { "name": "Thời gian lái hôm nay" },
+      "max_speed_today": { "name": "Tốc độ tối đa hôm nay" },
+      "speed": { "name": "Tốc độ" },
+      "engine_rpm": { "name": "Vòng tua" },
+      "coolant_temperature": { "name": "Nhiệt độ nước làm mát" },
+      "oil_temperature": { "name": "Nhiệt độ dầu" },
+      "battery_voltage": { "name": "Điện áp ắc quy" },
+      "fuel_level": { "name": "Mức nhiên liệu" },
+      "engine_load": { "name": "Tải động cơ" },
+      "throttle_position": { "name": "Độ mở chân ga" },
+      "last_trip_distance": { "name": "Quãng đường chuyến gần nhất" },
+      "last_trip_duration": { "name": "Thời gian lái chuyến gần nhất" },
+      "last_trip_average_speed": { "name": "Tốc độ trung bình chuyến gần nhất" },
+      "last_trip_max_speed": { "name": "Tốc độ tối đa chuyến gần nhất" },
+      "last_trip_start": { "name": "Giờ đi chuyến gần nhất" },
+      "last_trip_end": { "name": "Giờ đến chuyến gần nhất" },
+      "last_trip_max_coolant": { "name": "Nhiệt độ nước tối đa chuyến gần nhất" },
+      "last_trip_max_oil": { "name": "Nhiệt độ dầu tối đa chuyến gần nhất" },
+      "last_update": { "name": "Lần cuối nhận dữ liệu từ xe" }
+    }
+  }
+}

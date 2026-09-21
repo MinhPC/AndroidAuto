@@ -1,0 +1,66 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Car Trips",
+        "description": "Read the trips your car launcher sends to Firebase. Create a service account with the Cloud Datastore Viewer role and paste its JSON key here.",
+        "data": {
+          "service_account": "Service account key (JSON)",
+          "uid": "Firebase user ID",
+          "name": "Name"
+        },
+        "data_description": {
+          "uid": "The user ID of the account the launcher is signed in with: Firebase console > Authentication > Users > User UID."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Key no longer accepted",
+        "description": "Paste a new service account JSON key.",
+        "data": {
+          "service_account": "Service account key (JSON)"
+        }
+      }
+    },
+    "error": {
+      "invalid_service_account": "This is not a service account JSON key.",
+      "invalid_auth": "Google did not accept this key. Check that the service account still exists and the key was not deleted.",
+      "no_permission": "The service account may not read Firestore. Give it the Cloud Datastore Viewer role.",
+      "cannot_connect": "Could not read Firestore. Check the connection and that Firestore is created in the project."
+    },
+    "abort": {
+      "already_configured": "This car is already set up.",
+      "reauth_successful": "The new key is in use."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "moving": { "name": "Driving" }
+    },
+    "sensor": {
+      "distance_today": { "name": "Distance today" },
+      "distance_week": { "name": "Distance this week" },
+      "distance_month": { "name": "Distance this month" },
+      "distance_year": { "name": "Distance this year" },
+      "trips_today": { "name": "Trips today" },
+      "driving_time_today": { "name": "Driving time today" },
+      "max_speed_today": { "name": "Top speed today" },
+      "speed": { "name": "Speed" },
+      "engine_rpm": { "name": "Engine speed" },
+      "coolant_temperature": { "name": "Coolant temperature" },
+      "oil_temperature": { "name": "Oil temperature" },
+      "battery_voltage": { "name": "Battery voltage" },
+      "fuel_level": { "name": "Fuel level" },
+      "engine_load": { "name": "Engine load" },
+      "throttle_position": { "name": "Throttle position" },
+      "last_trip_distance": { "name": "Last trip distance" },
+      "last_trip_duration": { "name": "Last trip driving time" },
+      "last_trip_average_speed": { "name": "Last trip average speed" },
+      "last_trip_max_speed": { "name": "Last trip top speed" },
+      "last_trip_start": { "name": "Last trip start" },
+      "last_trip_end": { "name": "Last trip end" },
+      "last_trip_max_coolant": { "name": "Last trip max coolant temperature" },
+      "last_trip_max_oil": { "name": "Last trip max oil temperature" },
+      "last_update": { "name": "Last update from car" }
+    }
+  }
+}
