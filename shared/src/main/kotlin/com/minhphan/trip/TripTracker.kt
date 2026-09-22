@@ -23,8 +23,14 @@ data class TripConfig(
     val engineOffAfterMs: Long = 20_000L,
     /** A car that stands with its engine running (a jam, a drive-through) keeps its trip open this long instead. */
     val engineIdleStopAfterMs: Long = 15 * 60_000L,
-    /** A trip also ends when the GPS has said nothing for this long. */
+    /** A trip also ends when neither GPS nor (while bridging, see [gpsLostAfterMs]) OBD has said anything for this long. */
     val silenceEndsTripMs: Long = 5 * 60_000L,
+    /**
+     * No real GPS fix for this long, while OBD still reports the car moving: the distance since is guessed from
+     * that speed instead of from position (a tunnel or an underground car park, not a real stop). Longer than a
+     * normal gap between fixes (about one second), so a moment of jitter does not start it.
+     */
+    val gpsLostAfterMs: Long = 15_000L,
     val pointEveryMs: Long = 5_000L,
     val flushEveryPoints: Int = 12,
     /**
@@ -82,6 +88,12 @@ class TripTracker(private val zone: ZoneId, private val config: TripConfig = Tri
         var sawEngine = false
         var engineOffSince = NEVER
         var seq = 0
+        /** The last time either a real fix or, while [bridging], OBD confirmed the car was still going. */
+        var lastActivityAt = startFix.timeMs
+        /** True from the moment GPS fixes stop arriving and the distance is being guessed from OBD speed, until a
+         *  real fix resyncs the position. */
+        var bridging = false
+        var lastBridgeAt = NEVER
         var pointCount = 0
         val buffer = ArrayList<TripPoint>()
         val days = LinkedHashMap<String, DayChanges>()
@@ -103,7 +115,7 @@ class TripTracker(private val zone: ZoneId, private val config: TripConfig = Tri
         val out = ArrayList<TripEvent>()
         trip?.let { t ->
             if (fix.timeMs <= t.lastFix.timeMs) return out // a repeat or a late one
-            if (fix.timeMs - t.lastFix.timeMs > config.silenceEndsTripMs) end(t, t.lastFix, fix.timeMs, out)
+            if (fix.timeMs - t.lastActivityAt > config.silenceEndsTripMs) end(t, t.lastFix, fix.timeMs, out)
         }
 
         val current = trip
@@ -124,11 +136,47 @@ class TripTracker(private val zone: ZoneId, private val config: TripConfig = Tri
         return out
     }
 
-    /** Call now and then, also while there are no fixes, so a trip whose GPS went silent still ends. */
-    fun tick(nowMs: Long): List<TripEvent> {
+    /**
+     * Call now and then, also while there are no fixes, so a trip whose GPS went silent still ends - or, while
+     * [obdSpeedKmh] says the car is still moving, keeps going on a guessed distance instead ([bridge]).
+     */
+    fun tick(nowMs: Long, obdSpeedKmh: Float? = null): List<TripEvent> {
         val t = trip ?: return emptyList()
-        if (nowMs - t.lastFix.timeMs <= config.silenceEndsTripMs) return emptyList()
-        return ArrayList<TripEvent>().also { end(t, t.lastFix, nowMs, it) }
+        val out = ArrayList<TripEvent>()
+        if (nowMs - t.lastFix.timeMs >= config.gpsLostAfterMs && obdSpeedKmh != null && obdSpeedKmh >= config.stopSpeedKmh) {
+            bridge(t, nowMs, obdSpeedKmh, out)
+        }
+        if (nowMs - t.lastActivityAt > config.silenceEndsTripMs) end(t, t.lastFix, nowMs, out)
+        return out
+    }
+
+    /**
+     * Adds the distance covered since the last real fix or the last call to this, guessed from [obdSpeedKmh] and
+     * the time elapsed - GPS is gone (a tunnel, an underground car park) but the engine says the car has not
+     * stopped. The route itself is not extended: without a heading there is no way to say where the car went, only
+     * how far: the map simply jumps to the next real fix. [advance] must not double count this once that fix
+     * resyncs the position, which is why it checks [Active.bridging] first.
+     */
+    private fun bridge(t: Active, nowMs: Long, obdSpeedKmh: Float, out: MutableList<TripEvent>) {
+        val from = if (t.bridging) t.lastBridgeAt else t.lastFix.timeMs
+        val dtMs = nowMs - from
+        t.lastBridgeAt = nowMs
+        t.bridging = true
+        if (dtMs <= 0) return
+        val km = obdSpeedKmh * (dtMs / 3_600_000.0)
+        t.distanceM += km * 1000.0
+        t.movingMs += dtMs
+        t.maxSpeedKmh = maxOf(t.maxSpeedKmh, obdSpeedKmh)
+        t.lastActivityAt = nowMs
+        val day = t.days.getOrPut(dayOf(nowMs)) { DayChanges() }
+        day.km += km
+        day.movingMs += dtMs
+        day.maxSpeedKmh = maxOf(day.maxSpeedKmh, obdSpeedKmh)
+        if (!t.confirmed && t.distanceM >= config.confirmDistanceKm * 1000.0) {
+            t.confirmed = true
+            t.days.getOrPut(t.day) { DayChanges() }.newTrips = 1
+        }
+        flush(t, out)
     }
 
     /** Ends the trip in progress, if any, because recording is being stopped. */
@@ -138,16 +186,20 @@ class TripTracker(private val zone: ZoneId, private val config: TripConfig = Tri
     }
 
     private fun advance(t: Active, fix: Fix, engine: EngineData, out: MutableList<TripEvent>) {
+        // A real fix resyncs the position: the distance guessed by bridge() while it was gone already covers this
+        // gap, so the jump to here must not be counted again as real, GPS-measured distance.
+        val wasBridging = t.bridging
+        t.bridging = false
         val dtMs = fix.timeMs - t.lastFix.timeMs
         val moving = fix.speedKmh >= config.stopSpeedKmh
         val justStopped = !moving && t.lastFix.speedKmh >= config.stopSpeedKmh
         val meters = distanceMeters(t.lastFix.position, fix.position)
         val day = t.days.getOrPut(dayOf(fix.timeMs)) { DayChanges() }
-        if (moving && meters / (dtMs / 1000.0) <= config.maxPlausibleSpeedMs) {
+        if (!wasBridging && moving && meters / (dtMs / 1000.0) <= config.maxPlausibleSpeedMs) {
             t.distanceM += meters
             day.km += meters / 1000.0
         }
-        if (moving && dtMs <= config.maxDrivingGapMs) {
+        if (!wasBridging && moving && dtMs <= config.maxDrivingGapMs) {
             t.movingMs += dtMs
             day.movingMs += dtMs
         }
@@ -155,6 +207,7 @@ class TripTracker(private val zone: ZoneId, private val config: TripConfig = Tri
         day.maxSpeedKmh = maxOf(day.maxSpeedKmh, fix.speedKmh)
         noteEngine(t, engine)
         t.lastFix = fix
+        t.lastActivityAt = fix.timeMs
         val rpm = engine.rpm ?: 0
         val engineOff = t.sawEngine && engine.rpm == 0
         if (!moving && engineOff) {

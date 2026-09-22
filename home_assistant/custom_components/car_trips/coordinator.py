@@ -32,6 +32,7 @@ from .models import (
     parse_live,
     parse_refuel,
     parse_trip,
+    route_geojson,
     totals_between,
     week_range,
     year_range,
@@ -53,17 +54,17 @@ REFUELS_KEPT = 20
 ROUTE_MAX_AGE_SECONDS = 300
 ROUTE_WAYPOINTS = 8
 
+# All the chunks of a trip's route are read in one query (up to this many - about three and a half hours of
+# driving - for a trip longer than that, the ones Firestore happens to hand back), shared between the Google Maps
+# link and the full GeoJSON so a trip's route costs one read of its chunks, not two. The query asks for no
+# particular order: Firestore only auto-indexes a subcollection query ordered by __name__ ascending, not
+# descending, and a descending "last chunk" query (the previous approach) fails on a real project with
+# FAILED_PRECONDITION unless a composite index is created by hand - the chunks come back in whatever order
+# Firestore likes and are sorted here instead, by their zero-padded id, which is cheap for at most a few hundred.
+ROUTE_DETAIL_CHUNKS = 200
+ROUTE_DETAIL_POINTS = 500
 
-# The newest chunk of a trip's route: its number says how many there are. Ids are numbers padded with zeros, so they sort as text.
-_LAST_CHUNK_QUERY = {
-    "from": [{"collectionId": "chunks"}],
-    "orderBy": [{"field": {"fieldPath": "__name__"}, "direction": "DESCENDING"}],
-    "limit": 1,
-}
-
-
-def _seq(chunk_id: str) -> int:
-    return int(chunk_id) if chunk_id.isdigit() else 0
+_CHUNKS_QUERY = {"from": [{"collectionId": "chunks"}], "limit": ROUTE_DETAIL_CHUNKS}
 
 
 def _refuel_query(limit: int) -> dict[str, Any]:
@@ -92,6 +93,7 @@ class CarData:
     last_trip: Trip | None
     fuel: FuelStats
     route_url: str | None = None
+    route_geojson: str | None = None
 
     @property
     def driving(self) -> bool:
@@ -120,6 +122,25 @@ class CarTripsCoordinator(DataUpdateCoordinator[CarData]):
         self._route_key: tuple[str, bool] | None = None
         self._route_read_at = 0.0
         self._route_link: str | None = None
+        self._geojson_key: str | None = None
+        self._geojson_cache: str | None = None
+        self._chunks_key: tuple[str, bool] | None = None
+        self._chunks_read_at = 0.0
+        self._chunks_cache: list[dict[str, Any]] = []
+
+    async def _chunks(self, user: str, trip: Trip) -> list[dict[str, Any]]:
+        """Every chunk of [trip]'s route (see ROUTE_DETAIL_CHUNKS), oldest first. Shared by [_route_url] and
+        [_route_geojson] (same cache rule: once a trip is over this never changes again) so the two together cost
+        one read of the route, not two.
+        """
+        key = (trip.id, trip.ongoing)
+        now = time.monotonic()
+        if key == self._chunks_key and (not trip.ongoing or now - self._chunks_read_at < ROUTE_MAX_AGE_SECONDS):
+            return self._chunks_cache
+        found = await self.client.run_query(f"{user}/trips/{trip.id}", _CHUNKS_QUERY)
+        found.sort(key=lambda chunk: chunk.get("_id", ""))
+        self._chunks_key, self._chunks_read_at, self._chunks_cache = key, now, found
+        return found
 
     async def _route_url(self, user: str, trip: Trip | None) -> str | None:
         """A Google Maps link for the route of [trip]. Only worth a few reads once a trip is over, or now and then during one."""
@@ -130,20 +151,39 @@ class CarTripsCoordinator(DataUpdateCoordinator[CarData]):
         if key == self._route_key and (not trip.ongoing or now - self._route_read_at < ROUTE_MAX_AGE_SECONDS):
             return self._route_link
         try:
-            parent = f"{user}/trips/{trip.id}"
-            last = await self.client.run_query(parent, _LAST_CHUNK_QUERY)
-            seqs = chunk_seqs(_seq(last[0]["_id"]), ROUTE_WAYPOINTS) if last else []
-            chunks = await asyncio.gather(*(self.client.get_document(f"{parent}/chunks/{seq:05d}") for seq in seqs))
+            chunks = await self._chunks(user, trip)
         except FirestoreAuthError:
             raise
         except FirestoreError as err:
             # The route is a nicety: the rest of the data must not go missing because it could not be read.
             _LOGGER.debug("Cannot read the route of trip %s: %s", trip.id, err)
             return self._route_link if self._route_key and self._route_key[0] == trip.id else None
-        waypoints = [point for chunk in chunks if (point := chunk_midpoint(chunk))]
+        picks = chunk_seqs(len(chunks) - 1, ROUTE_WAYPOINTS)
+        waypoints = [point for i in picks if (point := chunk_midpoint(chunks[i]))]
         self._route_key, self._route_read_at = key, now
         self._route_link = google_maps_route_url(trip.start, trip.end, waypoints)
         return self._route_link
+
+    async def _route_geojson(self, user: str, trip: Trip | None) -> str | None:
+        """Every point of [trip]'s route as GeoJSON, for a map card to draw - see ROUTE_DETAIL_CHUNKS for why only a
+        finished trip gets this (and why it is read once and then kept).
+        """
+        if trip is None or trip.ongoing:
+            return None
+        if self._geojson_key == trip.id:
+            return self._geojson_cache
+        try:
+            chunks = await self._chunks(user, trip)
+        except FirestoreAuthError:
+            raise
+        except FirestoreError as err:
+            # The detailed route is a nicety, same as the Google Maps link: the rest of the data must not go
+            # missing because it could not be read, and a later poll tries again (the trip stays "not cached").
+            _LOGGER.debug("Cannot read the full route of trip %s: %s", trip.id, err)
+            return None
+        self._geojson_key = trip.id
+        self._geojson_cache = route_geojson(chunks, ROUTE_DETAIL_POINTS)
+        return self._geojson_cache
 
     async def _fill_ups(self, user: str) -> list[Refuel]:
         """The latest fill-ups. One read says whether there is a new one; only then are they all read again."""
@@ -202,6 +242,7 @@ class CarTripsCoordinator(DataUpdateCoordinator[CarData]):
         trip = trip.settled(now) if trip else None
         try:
             route_url = await self._route_url(user, trip)
+            geojson = await self._route_geojson(user, trip)
         except FirestoreAuthError as err:
             raise ConfigEntryAuthFailed(str(err)) from err
         data = CarData(
@@ -213,6 +254,7 @@ class CarTripsCoordinator(DataUpdateCoordinator[CarData]):
             last_trip=trip,
             fuel=fuel_stats(refuels, *_month_bounds(month)),
             route_url=route_url,
+            route_geojson=geojson,
         )
         self.update_interval = MOVING_INTERVAL if data.driving else IDLE_INTERVAL
         return data

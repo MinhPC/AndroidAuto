@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import date
 
 from custom_components.car_trips.const import LIVE_STALE_SECONDS, ONGOING_STALE_SECONDS
@@ -17,6 +18,7 @@ from custom_components.car_trips.models import (
     google_maps_route_url,
     google_maps_url,
     parse_refuel,
+    route_geojson,
     totals_between,
     totals_from_sums,
     week_range,
@@ -222,6 +224,43 @@ def test_google_maps_links():
 
     many = google_maps_route_url((21.0, 105.8), (21.03, 105.85), [(21.0 + i / 100, 105.8) for i in range(12)])
     assert many.count("%7C") == 8  # Google takes nine waypoints at most
+
+
+def test_route_geojson_is_none_with_fewer_than_two_points():
+    assert route_geojson([], 500) is None
+    assert route_geojson([{"points": [{"a": 21.0, "o": 105.0}]}], 500) is None
+
+
+def test_route_geojson_is_every_point_in_order_when_under_the_limit():
+    chunks = [{"points": [{"a": 21.0 + i * 0.0001, "o": 105.0} for i in range(12)]} for _ in range(3)]
+    data = json.loads(route_geojson(chunks, 500))
+    assert data["type"] == "Feature"
+    assert data["geometry"]["type"] == "LineString"
+    coords = data["geometry"]["coordinates"]
+    assert len(coords) == 36
+    assert coords[0] == [105.0, 21.0]  # GeoJSON is [lon, lat]
+    assert [c[1] for c in coords] == sorted(c[1] for c in coords)
+
+
+def test_route_geojson_thins_evenly_when_over_the_limit():
+    points, n = [], 0
+    for _ in range(10):
+        chunk_points = []
+        for _ in range(100):
+            chunk_points.append({"a": 21.0 + n * 0.00001, "o": 105.0})
+            n += 1
+        points.append({"points": chunk_points})
+    coords = json.loads(route_geojson(points, 100))["geometry"]["coordinates"]
+    assert len(coords) == 100
+    lats = [c[1] for c in coords]
+    assert lats == sorted(lats)
+    assert lats[0] == 21.0
+
+
+def test_route_geojson_tolerates_a_missing_chunk_and_a_broken_point():
+    chunks = [None, {"points": [{"a": 1.0, "o": 2.0}, "x", {"a": 1.1}, {"a": 1.2, "o": 2.2}]}]
+    coords = json.loads(route_geojson(chunks, 500))["geometry"]["coordinates"]
+    assert coords == [[2.0, 1.0], [2.2, 1.2]]
 
 
 def test_parse_live_reads_the_fuel_estimate_and_ignores_a_broken_one():

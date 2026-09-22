@@ -14,6 +14,8 @@ import com.minhphan.trip.Refuel
 import com.minhphan.trip.Schema
 import com.minhphan.trip.TripEvent
 import com.minhphan.trip.toMap
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.tasks.await
 
 /**
  * Writes what the [com.minhphan.trip.TripTracker] produces to the signed-in user's part of Firestore. Firestore keeps
@@ -32,6 +34,8 @@ class TripUploader(
 ) {
     private val db: FirebaseFirestore? =
         if (FirebaseApp.getApps(context).isEmpty()) null else FirebaseFirestore.getInstance()
+
+    private val cleanupPrefs = context.applicationContext.getSharedPreferences("trip_cleanup", Context.MODE_PRIVATE)
 
     /** The highest speed already sent for each day: the server cannot take a maximum, so only a higher one is sent. */
     private val sentMaxSpeed = HashMap<String, Float>()
@@ -64,6 +68,56 @@ class TripUploader(
             }
         }
         return uid
+    }
+
+    /**
+     * Deletes the route detail ([Schema.CHUNKS], the GPS point every 5 seconds) of trips older than
+     * [RETENTION_DAYS], the way a dashcam loops over its oldest footage. The trip itself (its distance, times, max
+     * OBD readings) is a few hundred bytes and is kept forever; the route chunks are what actually grow towards
+     * Firestore's 1 GiB free-plan quota (even driving around the clock every day, [RETENTION_DAYS] of chunks stays
+     * a few hundred MB). Runs at most once a day and only a batch of trips at a time, so an account with years of
+     * history does not delete thousands of chunks - and spend as many writes - in one go; it catches up over the
+     * following days instead.
+     */
+    suspend fun cleanupOldRoutes(now: Long) {
+        val db = db ?: return
+        val uid = account.uid ?: return
+        if (now - cleanupPrefs.getLong(KEY_LAST_RUN, 0) < CLEANUP_EVERY_MS) return
+        val cutoff = now - RETENTION_DAYS * DAY_MS
+        val cleanedBefore = cleanupPrefs.getLong(KEY_CLEANED_BEFORE, 0)
+        // A failure here (no network, a refused request) is not urgent: KEY_LAST_RUN still moves on, so it is
+        // simply tried again a day from now instead of hammering Firestore while the car is offline.
+        try {
+            if (cleanedBefore < cutoff) {
+                val trips = db.collection(Schema.USERS).document(uid).collection(Schema.TRIPS)
+                    .whereGreaterThanOrEqualTo("startedAt", cleanedBefore)
+                    .whereLessThan("startedAt", cutoff)
+                    .orderBy("startedAt")
+                    .limit(CLEANUP_BATCH)
+                    .get().await()
+                var lastStartedAt = cleanedBefore
+                for (trip in trips.documents) {
+                    deleteChunks(db, trip.reference)
+                    lastStartedAt = trip.getLong("startedAt") ?: lastStartedAt
+                }
+                val caughtUp = trips.size() < CLEANUP_BATCH
+                cleanupPrefs.edit().putLong(KEY_CLEANED_BEFORE, if (caughtUp) cutoff else lastStartedAt + 1).apply()
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not clean up old routes", e)
+        }
+        cleanupPrefs.edit().putLong(KEY_LAST_RUN, now).apply()
+    }
+
+    private suspend fun deleteChunks(db: FirebaseFirestore, trip: DocumentReference) {
+        val chunks = trip.collection(Schema.CHUNKS).get().await()
+        for (group in chunks.documents.chunked(400)) {
+            val batch = db.batch()
+            for (doc in group) batch.delete(doc.reference)
+            batch.commit().await()
+        }
     }
 
     /**
@@ -115,5 +169,11 @@ class TripUploader(
 
     private companion object {
         const val TAG = "TripUploader"
+        const val DAY_MS = 24 * 60 * 60 * 1000L
+        const val RETENTION_DAYS = 60L
+        const val CLEANUP_EVERY_MS = DAY_MS
+        const val CLEANUP_BATCH = 30L
+        const val KEY_LAST_RUN = "cleanup_last_run"
+        const val KEY_CLEANED_BEFORE = "cleanup_before_ms"
     }
 }

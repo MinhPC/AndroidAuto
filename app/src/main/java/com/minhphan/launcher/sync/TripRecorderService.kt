@@ -82,6 +82,9 @@ class TripRecorderService : Service() {
         // The one thread of the process for this work, so a service that is stopped and started again cannot overlap.
         val scope = CoroutineScope(SupervisorJob() + app.recorderDispatcher).also { this.scope = it }
         var engine = EngineData()
+        // What OBD itself says the car is doing, kept next to [engine] so GPS and OBD can stand in for each other:
+        // a fix missing its own speed (poor signal) borrows this, and [tracker] bridges a lost GPS fix with it.
+        var obdSpeedKmh: Float? = null
 
         // The uploader and the tracker are used from this one thread; everything goes through here so that what was
         // sent is also noted in the drive log.
@@ -95,21 +98,23 @@ class TripRecorderService : Service() {
             // and fill-ups logged while nobody was signed in.
             app.driveLog.openTrip()?.let { (uid, tripId) -> if (uploader.closeTrip(uid, tripId)) app.driveLog.clearOpenTrip() }
             app.uploadPendingRefuels()
+            uploader.cleanupOldRoutes(System.currentTimeMillis())
         }
         scope.launch {
             app.obdHub.states.collect { state ->
                 engine = state.toEngine()
+                obdSpeedKmh = state.speedKmh()
             }
         }
         scope.launch {
             while (true) {
                 delay(TICK_MS)
-                if (lastFixTime > 0) send(tracker.tick(gpsNow()))
+                if (lastFixTime > 0) send(tracker.tick(gpsNow(), obdSpeedKmh))
             }
         }
         scope.launch {
             gpsLocations(this@TripRecorderService).collect { location ->
-                val fix = location.toFix()
+                val fix = location.toFix(obdSpeedKmh)
                 lastFixTime = fix.timeMs
                 lastFixElapsed = SystemClock.elapsedRealtime()
                 app.syncStatus.fix()
@@ -183,11 +188,12 @@ class TripRecorderService : Service() {
     }
 }
 
-private fun Location.toFix() = Fix(
+/** [obdFallbackKmh] stands in when this fix has a position but, in poor signal, no speed of its own. */
+private fun Location.toFix(obdFallbackKmh: Float?) = Fix(
     timeMs = if (time > 0) time else System.currentTimeMillis(),
     position = LatLon(latitude, longitude),
     accuracyM = if (hasAccuracy()) accuracy else null,
-    speedKmh = if (hasSpeed()) speed * 3.6f else 0f,
+    speedKmh = if (hasSpeed()) speed * 3.6f else obdFallbackKmh ?: 0f,
 )
 
 /**
@@ -210,3 +216,6 @@ internal fun ObdValues.toEngine() = EngineData(
     fuelTrimPercent = fuelTrimPercent,
     voltage = voltage,
 )
+
+/** What the OBD adapter itself reports for road speed, when it is connected and says so; null otherwise. */
+internal fun ObdState.speedKmh(): Float? = (this as? ObdState.Connected)?.values?.speedKmh?.toFloat()

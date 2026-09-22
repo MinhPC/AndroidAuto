@@ -263,6 +263,35 @@ class TripTrackerTest {
     }
 
     @Test
+    fun aTunnelWithNoGpsKeepsGoingOnObdSpeed() {
+        val tracker = TripTracker(zone)
+        tracker.cruise(minutes = 2) // 2 km by t0+120_000, still moving when the fixes stop
+        var now = t0 + 120_000
+        val events = ArrayList<TripEvent>()
+        repeat(6) { // three minutes in a tunnel, ticked every 30 s like the recorder service does
+            now += 30_000
+            events += tracker.tick(now, obdSpeedKmh = 60f)
+        }
+        assertTrue(tracker.driving) // silence alone would have ended it after five minutes
+        val trip = events.saves().last()
+        assertEquals(2.0 + 3.0, trip.distanceKm, 0.1) // 2 km driven, plus 3 km guessed at 60 km/h for three minutes
+    }
+
+    @Test
+    fun aRealFixAfterATunnelDoesNotDoubleCountTheGuessedDistance() {
+        val tracker = TripTracker(zone)
+        tracker.cruise(minutes = 1) // 1 km by t0+60_000
+        val afterTunnel = 60L + 20 // twenty seconds without GPS, OBD says 60 km/h throughout
+        tracker.tick(t0 + afterTunnel * 1000, obdSpeedKmh = 60f)
+
+        // A real fix resyncs at the position 60 km/h would actually have reached by then.
+        val resyncMeters = 16.6667 * 60 + 60_000.0 / 3_600 * 20
+        val events = tracker.onFix(fix(afterTunnel, resyncMeters, 60f)) + tracker.finish(t0 + afterTunnel * 1000 + 1_000)
+        val trip = events.saves().last()
+        assertEquals(resyncMeters / 1000.0, trip.distanceKm, 0.05) // not the 20 s guessed twice over
+    }
+
+    @Test
     fun aTripAcrossMidnightIsSplitBetweenTheTwoDays() {
         val tracker = TripTracker(zone)
         val start = Instant.parse("2026-09-21T23:55:00Z").toEpochMilli()

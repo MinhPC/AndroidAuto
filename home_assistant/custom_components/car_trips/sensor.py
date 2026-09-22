@@ -187,6 +187,9 @@ SENSORS: tuple[CarSensorDescription, ...] = (
                 "ongoing": d.last_trip.ongoing,
                 # Opens Google Maps with the route; missing until the route has been read.
                 **({"google_maps_route_url": d.route_url} if d.route_url else {}),
+                # Every GPS point of the route as a GeoJSON LineString, for a map card (e.g. HACS's ha-map-card,
+                # geojson: route_geojson) to draw; only there once the trip is over, see ROUTE_DETAIL_CHUNKS.
+                **({"route_geojson": d.route_geojson} if d.route_geojson else {}),
             }
             if d.last_trip
             else {}

@@ -10,6 +10,7 @@ The field names are the ones in the launcher's Schema.kt:
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from typing import Any
@@ -287,6 +288,33 @@ def chunk_midpoint(chunk: dict[str, Any] | None) -> tuple[float, float] | None:
     point = points[len(points) // 2]
     lat, lon = (_number(point, "a"), _number(point, "o")) if isinstance(point, dict) else (None, None)
     return (lat, lon) if lat is not None and lon is not None else None
+
+
+def route_geojson(chunks: list[dict[str, Any]], max_points: int) -> str | None:
+    """Every point of the route across [chunks] (oldest chunk first), as a GeoJSON LineString for a map card that
+    draws it - the actual GPS trace, not a road-snapped guess through a handful of waypoints like
+    [google_maps_route_url]. Thinned to at most [max_points] evenly spread ones when there are more: still smooth
+    to look at, lighter to store as an entity attribute and to hand to the browser. None with fewer than two points,
+    which draws nothing.
+    """
+    points: list[tuple[float, float]] = []
+    for chunk in chunks:
+        for point in (chunk or {}).get("points") or []:
+            lat, lon = (_number(point, "a"), _number(point, "o")) if isinstance(point, dict) else (None, None)
+            if lat is not None and lon is not None:
+                points.append((lat, lon))
+    if len(points) < 2:
+        return None
+    if len(points) > max_points:
+        step = len(points) / max_points
+        points = [points[round(i * step)] for i in range(max_points)]
+    return json.dumps(
+        {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {"type": "LineString", "coordinates": [[lon, lat] for lat, lon in points]},
+        }
+    )
 
 
 def _coordinates(point: tuple[float, float]) -> str:

@@ -15,7 +15,7 @@ Mọi thực thể thuộc một thiết bị (tên bạn đặt lúc thêm, m�
 | `sensor.car_trips_today`, `sensor.car_driving_time_today`, `sensor.car_top_speed_today` | Số chuyến, thời gian lái (phút), tốc độ tối đa của hôm nay. |
 | `sensor.car_speed`, `_engine_speed`, `_coolant_temperature`, `_intake_temperature`, `_battery_voltage`, `_fuel_trim` | Tốc độ và thông số động cơ trong lần gửi gần nhất. Khi xe đỗ, launcher không gửi thông số động cơ nên các cảm biến này hiện *unknown*. |
 | `sensor.car_engine_load`, `_throttle_position` | Như trên, mặc định tắt (bật trong trang thực thể). |
-| `sensor.car_last_trip_distance`, `_driving_time`, `_average_speed`, `_top_speed`, `_start`, `_end` | Chuyến gần nhất: đang đi thì là chuyến hiện tại, đỗ thì là chuyến vừa xong. `_end` là *unknown* khi chuyến chưa kết thúc. Cảm biến quãng đường có thuộc tính toạ độ điểm đi/đến, `ongoing` và `google_maps_route_url` (link mở lộ trình trên Google Maps). |
+| `sensor.car_last_trip_distance`, `_driving_time`, `_average_speed`, `_top_speed`, `_start`, `_end` | Chuyến gần nhất: đang đi thì là chuyến hiện tại, đỗ thì là chuyến vừa xong. `_end` là *unknown* khi chuyến chưa kết thúc. Cảm biến quãng đường có thuộc tính toạ độ điểm đi/đến, `ongoing`, `google_maps_route_url` (link mở lộ trình trên Google Maps) và `route_geojson` (toàn bộ lộ trình dạng GeoJSON, chỉ có khi chuyến đã kết thúc — xem "Vẽ lộ trình trên bản đồ Home Assistant" bên dưới). |
 | `sensor.car_last_trip_max_coolant`, `_max_intake` (mặc định tắt) | Nhiệt độ nước / khí nạp cao nhất của chuyến gần nhất. |
 | `sensor.car_estimated_fuel_range`, `_estimated_fuel_remaining`, `_estimated_fuel_level` | Quãng đường còn chạy được (km), xăng còn lại (lít) và mức xăng (%), **ước tính** bởi launcher: xe không cho đọc mức xăng, nên launcher tính từ dung tích bình, lần đổ đầy gần nhất và km đã chạy. Có từ lần đổ đầy đầu tiên; thuộc tính `economy_assumed` là *true* khi còn dùng mức tiêu hao mặc định (12 km/lít) vì chưa đủ dữ liệu. Ví dụ cảnh báo: khi `sensor.car_estimated_fuel_range` dưới 80 km. |
 | `sensor.car_fuel_economy`, `_average_fuel_economy` | Mức tiêu hao (km/lít) của lần đổ đầy gần nhất và trung bình (tổng km chia tổng lít). Chỉ có sau khi đổ đầy bình hai lần trên launcher. |
@@ -97,9 +97,11 @@ content: >
 Link lộ trình không cần khoá API. Nó gồm điểm đi, điểm đến và tối đa 8 điểm dọc đường lấy từ dữ liệu GPS của chuyến, rồi Google
 tự vẽ đường đi giữa các điểm đó. Vì vậy đường vẽ bám theo đường phố và gần đúng, không trùng từng mét với đường xe đã chạy.
 Mỗi lần tạo link tốn khoảng 10 lần đọc Firestore: một chuyến đã kết thúc chỉ đọc một lần, chuyến đang đi đọc lại mỗi 5 phút.
-Muốn xem đường xe đã đi trên bản đồ của Home Assistant, dùng thẻ bản đồ bên dưới với `hours_to_show`.
 
-Thẻ bản đồ:
+Muốn xem đường xe đã đi ngay trên dashboard Home Assistant (không mở sang Google Maps), có hai cách:
+
+Thẻ bản đồ có sẵn của HA, vẽ theo lịch sử vị trí đã ghi (mỗi ~30 giây lúc xe chạy, hơi gấp khúc chứ không mượt bằng
+GPS gốc, không cần cài gì thêm):
 
 ```yaml
 type: map
@@ -107,6 +109,22 @@ entities:
   - entity: device_tracker.car
 hours_to_show: 24  # vẽ đường xe đã đi trong 24 giờ qua
 ```
+
+Muốn đường vẽ **mượt, đúng từng điểm GPS 5 giây** của chuyến gần nhất, dùng thuộc tính `route_geojson` của
+`sensor.car_last_trip_distance` (toàn bộ lộ trình dạng GeoJSON `LineString`, tối đa 500 điểm; chỉ có khi chuyến đã
+kết thúc — xem bảng thực thể phía trên) với card cộng đồng
+[**ha-map-card**](https://github.com/nathan-gs/ha-map-card) (cài qua HACS, kho tuỳ chỉnh
+`nathan-gs/ha-map-card`, loại *Dashboard*/*plugin*):
+
+```yaml
+type: custom:map-card
+entities:
+  - entity: sensor.car_last_trip_distance
+    geojson: route_geojson
+```
+
+`route_geojson` chỉ được đọc lại khi có chuyến mới kết thúc (dùng chung một lần đọc "chunk mới nhất" với link Google
+Maps ở trên, không tốn thêm), nên không phát sinh chi phí đọc Firestore khi xe đang đỗ.
 
 Thống kê quãng đường theo tháng:
 

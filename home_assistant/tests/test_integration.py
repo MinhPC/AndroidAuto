@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 
 import pytest
@@ -89,19 +90,15 @@ def arrange(aioclient_mock, *, live=None, trip=None, today=None, refuels=(), chu
 
     aioclient_mock.post(f"{USER}:runQuery", side_effect=query)
 
-    # The route of the trip (its id is 1): the last chunk, and the chunks the integration picks along the way.
+    # The route of the trip (its id is 1): every chunk, in one query - the integration sorts them itself.
     chunks = chunks or {}
-    if chunks:
-        last = max(chunks)
-        newest = [{"document": {"name": f"x/trips/1/chunks/{last:05d}", **fields(points=chunks[last])}}]
-    else:
-        newest = [{"readTime": "t"}]
+    all_chunks = [
+        {"document": {"name": f"x/trips/1/chunks/{seq:05d}", **fields(points=points)}} for seq, points in chunks.items()
+    ]
     if route_status == 200:
-        aioclient_mock.post(f"{USER}/trips/1:runQuery", json=newest)
+        aioclient_mock.post(f"{USER}/trips/1:runQuery", json=all_chunks or [{"readTime": "t"}])
     else:
         aioclient_mock.post(f"{USER}/trips/1:runQuery", status=route_status, json={"error": {"message": "unavailable"}})
-    for seq, points in chunks.items():
-        aioclient_mock.get(f"{USER}/trips/1/chunks/{seq:05d}", json={"name": f"x/trips/1/chunks/{seq:05d}", **fields(points=points)})
 
 
 @pytest.fixture(autouse=True)
@@ -375,3 +372,31 @@ async def test_a_route_that_cannot_be_read_does_not_take_the_other_data_with_it(
     assert entry.state is ConfigEntryState.LOADED
     assert state(hass, "sensor.car_last_trip_distance").state == "12.5"
     assert "google_maps_route_url" not in state(hass, "sensor.car_last_trip_distance").attributes
+
+
+async def test_a_finished_trip_links_to_its_full_route_as_geojson(hass, aioclient_mock, service_account, freezer):
+    arrange(aioclient_mock, live=live_fields(), trip=trip_fields(ongoing=False), chunks=ROUTE)
+    await setup(hass, service_account, freezer)
+
+    geojson = json.loads(state(hass, "sensor.car_last_trip_distance").attributes["route_geojson"])
+    assert geojson["geometry"]["type"] == "LineString"
+    # every point of every chunk (1 + 3 + 1), not just the waypoints of the Google Maps link
+    assert len(geojson["geometry"]["coordinates"]) == 5
+    assert geojson["geometry"]["coordinates"][0] == [105.8, 21.0]
+
+
+async def test_an_ongoing_trip_has_no_full_route_yet(hass, aioclient_mock, service_account, freezer):
+    arrange(aioclient_mock, live=live_fields(), trip=trip_fields(ongoing=True), chunks=ROUTE)
+    await setup(hass, service_account, freezer)
+
+    assert "route_geojson" not in state(hass, "sensor.car_last_trip_distance").attributes
+
+
+async def test_the_full_route_is_looked_up_only_once_between_the_link_and_the_geojson(
+    hass, aioclient_mock, service_account, freezer
+):
+    arrange(aioclient_mock, live=live_fields(), trip=trip_fields(ongoing=False), chunks=ROUTE)
+    entry = await setup(hass, service_account, freezer)
+
+    await entry.runtime_data.async_refresh()
+    assert len(route_queries(aioclient_mock)) == 1  # shared between _route_url and _route_geojson, not one each
