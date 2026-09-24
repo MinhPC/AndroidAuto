@@ -25,3 +25,4 @@ mock_service_account.json
 # Gradle output of the library modules
 /cloud/build/
 /shared/build/
+.vscode/settings.json
