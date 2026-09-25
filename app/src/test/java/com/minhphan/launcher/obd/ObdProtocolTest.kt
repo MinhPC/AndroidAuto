@@ -71,6 +71,42 @@ class ObdProtocolTest {
     }
 
     @Test
+    fun theCarScannerValuesDecodeToTheirUnits() {
+        assertEquals(3, parsePid("41 08 84", Pid.ShortTrim2))
+        assertEquals(300, parsePid("41 0A 64", Pid.FuelPressure)) // 3 kPa steps
+        assertEquals(750, parsePid("41 1F 02 EE", Pid.RunTime)) // seconds
+        assertEquals(1200, parsePid("41 23 04 B0", Pid.RailPressure)) // 10 kPa steps, 120 bar
+        assertEquals(40, parsePid("41 2C 66", Pid.Egr))
+        assertEquals(12, parsePid("41 30 0C", Pid.WarmUps))
+        assertEquals(4660, parsePid("41 31 12 34", Pid.ClearedDistance))
+        assertEquals(560, parsePid("41 3C 17 70", Pid.Catalyst)) // 6000 / 10 - 40
+        assertEquals(14200, parsePid("41 42 37 78", Pid.ModuleVoltage)) // millivolts
+        assertEquals(120, parsePid("41 43 01 32", Pid.AbsoluteLoad)) // can pass 100 %
+        assertEquals(32768, parsePid("41 44 80 00", Pid.Lambda)) // lambda 1
+        assertEquals(64, parsePid("41 5E 00 40", Pid.FuelRate)) // 1/20 L/h, 3.2 L/h
+        assertEquals(-25, parsePid("41 62 64", Pid.Torque))
+        assertEquals(350, parsePid("41 63 01 5E", Pid.ReferenceTorque))
+    }
+
+    @Test
+    fun theStepGivesTheReadingItsDecimals() {
+        fun reading(field: ObdField, answer: String) =
+            ObdValues().with(field.pid!!, parsePid(answer, field.pid!!)).reading(field)!!
+        assertEquals(14.2f, reading(ObdField.MODULE_VOLTAGE, "41 42 37 78"), 0.001f)
+        assertEquals(1f, reading(ObdField.LAMBDA, "41 44 80 00"), 0.0001f)
+        assertEquals(3.2f, reading(ObdField.FUEL_RATE, "41 5E 00 40"), 0.001f)
+        assertEquals(120f, reading(ObdField.RAIL_PRESSURE, "41 23 04 B0"), 0.01f)
+        assertEquals(12.5f, reading(ObdField.RUN_TIME, "41 1F 02 EE"), 0.01f)
+    }
+
+    @Test
+    fun theNamesCoverTheOxygenSensorRanges() {
+        assertEquals("Oxygen sensor 1 voltage", obdPidName(0x14))
+        assertEquals("Oxygen sensor 8 lambda", obdPidName(0x2B))
+        assertEquals("Actual engine torque", obdPidName(0x62))
+    }
+
+    @Test
     fun answerIsFoundAmongTheAdaptersOtherLines() {
         assertEquals(750, parsePid("SEARCHING...\r41 0C 0B B8\r", Pid.Rpm))
         assertEquals(750, parsePid("\r\n41 0C 0B B8\r\n\r\n", Pid.Rpm))

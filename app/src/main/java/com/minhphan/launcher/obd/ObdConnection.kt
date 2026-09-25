@@ -61,8 +61,8 @@ private const val UNSUPPORTED_AFTER_MISSES = 3
  */
 private const val SILENT_VALUE_COOLDOWN_ROUNDS = 20
 
-/** The support bitmaps are read for PIDs 01 to 60: 0100, 0120 and 0140. */
-private const val LAST_SUPPORT_BLOCK = 0x40
+/** The support bitmaps are read for PIDs 01 to 80: 0100, 0120, 0140 and 0160 (the torque values are in the last). */
+private const val LAST_SUPPORT_BLOCK = 0x60
 private const val SILENT_ROUNDS_BEFORE_NO_VEHICLE = 5
 private const val VOLTAGE_EVERY_ROUNDS = 5
 

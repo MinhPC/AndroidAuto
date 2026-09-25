@@ -43,11 +43,13 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -66,6 +68,7 @@ import com.minhphan.launcher.diagnostics.findActivity
 import com.minhphan.launcher.obd.AUTO_ADDRESS
 import com.minhphan.launcher.obd.MAX_OBD_FIELDS
 import com.minhphan.launcher.obd.ObdField
+import com.minhphan.launcher.obd.ObdGroup
 import com.minhphan.launcher.obd.ObdState
 import com.minhphan.launcher.obd.SIMULATED_ADDRESS
 import com.minhphan.launcher.obd.bondedDevices
@@ -384,12 +387,46 @@ private fun ObdFieldSettings(chosen: List<ObdField>, viewModel: LauncherViewMode
         is ObdState.Problem -> s.last?.supported
     }
     Hint(stringResource(R.string.settings_obd_fields_hint, MAX_OBD_FIELDS))
-    ObdField.entries.forEach { field ->
-        val missing = supported != null && field.pid != null && field.pid.code !in supported
-        val name = stringResource(field.label) + if (missing) " (${stringResource(R.string.settings_obd_field_missing)})" else ""
-        SwitchRow(field in chosen, name, "") { on -> viewModel.setObdField(field, on) }
-    }
     if (chosen.size >= MAX_OBD_FIELDS) Hint(stringResource(R.string.settings_obd_fields_full, MAX_OBD_FIELDS))
+    // Folded groups keep the long list short; each says how many of its values are on, so nothing chosen is hidden.
+    var open by rememberSaveable { mutableStateOf<ObdGroup?>(null) }
+    ObdGroup.entries.forEach { group ->
+        val fields = ObdField.entries.filter { it.group == group }
+        GroupRow(stringResource(group.label), fields.count { it in chosen }, expanded = open == group) {
+            open = if (open == group) null else group
+        }
+        if (open == group) fields.forEach { field ->
+            val missing = supported != null && field.pid != null && field.pid.code !in supported
+            val name = stringResource(field.label) + if (missing) " (${stringResource(R.string.settings_obd_field_missing)})" else ""
+            SwitchRow(field in chosen, name, "") { on -> viewModel.setObdField(field, on) }
+        }
+    }
+}
+
+/** The heading of a folded group: its name, how many of its values are on, and an arrow that turns when it opens. */
+@Composable
+private fun GroupRow(label: String, onCount: Int, expanded: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (expanded) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+        if (onCount > 0) {
+            Text(
+                stringResource(R.string.settings_obd_group_count, onCount),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(end = 12.dp),
+            )
+        }
+        Text("▾", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.rotate(if (expanded) 180f else 0f))
+    }
 }
 
 /** Which paired Bluetooth device is the OBD adapter, with the way to pair one and to allow Bluetooth. */

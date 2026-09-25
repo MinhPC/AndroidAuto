@@ -76,6 +76,8 @@ private const val RPM_REDLINE = 6500f
 private const val TILES_PER_ROW = 3
 private const val VOLTAGE_LOW = 11.8f
 private const val VOLTAGE_HIGH = 15f
+private const val CATALYST_WARN_C = 850f
+private const val CATALYST_HOT_C = 950f
 
 /** How a reading is coloured: normal, worth a look, or wrong. */
 private enum class Tone { Normal, Warn, Danger }
@@ -161,16 +163,20 @@ fun ObdPanel(
     }
 }
 
-/** How a value is written on its tile, how full its bar is, and when it turns amber and red. */
+/** How a value is written on its tile, how full its bar is (null: a count, with no bar), and when it turns amber and red. */
 private class FieldStyle(
     val text: (Float) -> String,
-    val fraction: (Float) -> Float,
+    val fraction: (Float) -> Float?,
     val tone: (Float) -> Tone = { Tone.Normal },
 )
 
 private fun whole(value: Float) = value.roundToInt().toString()
 
 private fun signed(value: Float) = "%+d".format(value.roundToInt())
+
+private fun tenths(value: Float) = "%.1f".format(value)
+
+private fun hundredths(value: Float) = "%.2f".format(value)
 
 private fun above(value: Float, warn: Float, danger: Float) = when {
     value >= danger -> Tone.Danger
@@ -187,14 +193,16 @@ private fun below(value: Float, warn: Float, danger: Float) = when {
 private fun styleOf(field: ObdField): FieldStyle = when (field) {
     ObdField.COOLANT -> FieldStyle(::whole, { (it - 40) / 80f }, { above(it, COOLANT_WARN_C, COOLANT_HOT_C) })
     ObdField.INTAKE -> FieldStyle(::whole, { it / 80f }, { above(it, INTAKE_WARN_C, INTAKE_HOT_C) })
-    ObdField.VOLTAGE -> FieldStyle(
-        { "%.1f".format(it) },
+    ObdField.VOLTAGE, ObdField.MODULE_VOLTAGE -> FieldStyle(
+        ::tenths,
         { (it - 10f) / 6f },
         { if (it < VOLTAGE_LOW || it > VOLTAGE_HIGH) Tone.Danger else Tone.Normal },
     )
-    ObdField.LOAD, ObdField.THROTTLE -> FieldStyle(::whole, { it / 100f })
+    ObdField.LOAD, ObdField.THROTTLE, ObdField.ABSOLUTE_LOAD, ObdField.RELATIVE_THROTTLE, ObdField.THROTTLE_ACTUATOR,
+    ObdField.PEDAL, ObdField.EGR, ObdField.EVAP_PURGE, ObdField.ETHANOL, ObdField.TORQUE, ObdField.DEMAND_TORQUE,
+    -> FieldStyle(::whole, { it / 100f })
     // The bar sits half full at zero: filled more when the engine adds fuel, less when it takes it away.
-    ObdField.FUEL_TRIM, ObdField.SHORT_TRIM ->
+    ObdField.FUEL_TRIM, ObdField.SHORT_TRIM, ObdField.FUEL_TRIM_2, ObdField.SHORT_TRIM_2 ->
         FieldStyle(::signed, { (it + TRIM_SPAN_PERCENT) / (2 * TRIM_SPAN_PERCENT) }, { above(abs(it), TRIM_WARN_PERCENT, TRIM_BAD_PERCENT) })
     ObdField.MAP -> FieldStyle(::whole, { it / 110f })
     ObdField.TIMING -> FieldStyle(::signed, { (it + 10f) / 60f })
@@ -205,6 +213,17 @@ private fun styleOf(field: ObdField): FieldStyle = when (field) {
     ObdField.FUEL_LEVEL -> FieldStyle(::whole, { it / 100f }, { below(it, FUEL_WARN_PERCENT, FUEL_LOW_PERCENT) })
     ObdField.SPEED -> FieldStyle(::whole, { it / SPEED_MAX_KMH })
     ObdField.RPM -> FieldStyle(::whole, { it / RPM_MAX }, { above(it, RPM_REDLINE, RPM_REDLINE) })
+    // Lambda 1 is the stoichiometric mix, so the bar sits half full there: fuller when lean, emptier when rich.
+    ObdField.LAMBDA -> FieldStyle(::hundredths, { (it - 0.7f) / 0.6f })
+    ObdField.FUEL_RATE -> FieldStyle(::tenths, { it / 20f })
+    ObdField.FUEL_PRESSURE -> FieldStyle(::whole, { it / 600f })
+    ObdField.RAIL_PRESSURE -> FieldStyle(::whole, { it / 250f })
+    ObdField.CATALYST -> FieldStyle(::whole, { it / 1000f }, { above(it, CATALYST_WARN_C, CATALYST_HOT_C) })
+    ObdField.REFERENCE_TORQUE -> FieldStyle(::whole, { null })
+    ObdField.RUN_TIME -> FieldStyle(::whole, { it / 120f })
+    // Any distance or time with the fault light on means the car has had a fault since the codes were cleared.
+    ObdField.MIL_DISTANCE, ObdField.MIL_TIME -> FieldStyle(::whole, { null }, { above(it, 1f, 1f) })
+    ObdField.CLEARED_DISTANCE, ObdField.CLEARED_TIME, ObdField.WARM_UPS -> FieldStyle(::whole, { null })
 }
 
 @Composable

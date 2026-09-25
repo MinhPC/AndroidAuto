@@ -1,7 +1,11 @@
 package com.minhphan.launcher.obd
 
-/** The standard OBD-II "mode 01" values shown on Home, with the byte layout of each answer. */
-enum class Pid(val code: Int, val byteCount: Int) {
+/**
+ * The standard OBD-II "mode 01" values that can be shown on Home, with the byte layout of each answer: the same list
+ * of standard values that apps like Car Scanner read. [decode] gives whole steps of [step] display units, so a value
+ * that needs decimals (the module voltage, in thousandths of a volt) still travels as a whole number.
+ */
+enum class Pid(val code: Int, val byteCount: Int, val step: Float = 1f) {
     Rpm(0x0C, 2),
     Speed(0x0D, 1),
     Coolant(0x05, 1),
@@ -19,17 +23,52 @@ enum class Pid(val code: Int, val byteCount: Int) {
     Ambient(0x46, 1),
     Oil(0x5C, 1),
     FuelLevel(0x2F, 1),
+    ShortTrim2(0x08, 1),
+    FuelTrim2(0x09, 1),
+    FuelPressure(0x0A, 1),
+    RunTime(0x1F, 2, step = 1f / 60f),
+    MilDistance(0x21, 2),
+    RailPressure(0x23, 2, step = 0.1f),
+    Egr(0x2C, 1),
+    EvapPurge(0x2E, 1),
+    WarmUps(0x30, 1),
+    ClearedDistance(0x31, 2),
+    Catalyst(0x3C, 2),
+    ModuleVoltage(0x42, 2, step = 0.001f),
+    AbsoluteLoad(0x43, 2),
+    Lambda(0x44, 2, step = 1f / 32768f),
+    RelativeThrottle(0x45, 1),
+    Pedal(0x49, 1),
+    ThrottleActuator(0x4C, 1),
+    MilTime(0x4D, 2),
+    ClearedTime(0x4E, 2),
+    Ethanol(0x52, 1),
+    FuelRate(0x5E, 2, step = 0.05f),
+    DemandTorque(0x61, 1),
+    Torque(0x62, 1),
+    ReferenceTorque(0x63, 2),
     ;
 
-    /** The value in its display unit (rpm, km/h, °C, kPa, g/s or %), from the data bytes [a] and [b] of the answer. */
+    /**
+     * The value in steps of [step] of its display unit (rpm, km/h, °C, kPa, bar, g/s, %, V, L/h, Nm, min, km or a
+     * count), from the data bytes [a] and [b] of the answer.
+     */
     fun decode(a: Int, b: Int): Int = when (this) {
         Rpm -> (a * 256 + b) / 4
-        Speed, Map, Baro -> a
+        Speed, Map, Baro, WarmUps -> a
         Coolant, Intake, Ambient, Oil -> a - 40
-        Load, Throttle, FuelLevel -> Math.round(a * 100f / 255f)
-        FuelTrim, ShortTrim -> Math.round((a - 128) * 100f / 128f)
+        Load, Throttle, FuelLevel, Egr, EvapPurge, RelativeThrottle, Pedal, ThrottleActuator, Ethanol ->
+            Math.round(a * 100f / 255f)
+        FuelTrim, ShortTrim, FuelTrim2, ShortTrim2 -> Math.round((a - 128) * 100f / 128f)
         Timing -> Math.round(a / 2f - 64f)
         Maf -> Math.round((a * 256 + b) / 100f)
+        FuelPressure -> a * 3
+        // Seconds, shown in minutes; 10 kPa steps, shown in bar; millivolts; 1/32768 of lambda; 1/20 L/h.
+        RunTime, RailPressure, ModuleVoltage, Lambda, FuelRate -> a * 256 + b
+        MilDistance, ClearedDistance, MilTime, ClearedTime, ReferenceTorque -> a * 256 + b
+        Catalyst -> Math.round((a * 256 + b) / 10f - 40f)
+        AbsoluteLoad -> Math.round((a * 256 + b) * 100f / 255f)
+        DemandTorque, Torque -> a - 125
     }
 }
 
@@ -132,10 +171,14 @@ fun decodeSupported(base: Int, bytes: IntArray): Set<Int> = buildSet {
 
 /** What a mode 01 PID is called, for the diagnostics screen; null for one this app does not know. */
 fun obdPidName(code: Int): String? = when (code) {
+    0x01 -> "Monitor status since codes cleared"
+    0x03 -> "Fuel system status"
     0x04 -> "Engine load"
     0x05 -> "Coolant temperature"
     0x06 -> "Short-term fuel trim"
     0x07 -> "Long-term fuel trim"
+    0x08 -> "Short-term fuel trim, bank 2"
+    0x09 -> "Long-term fuel trim, bank 2"
     0x0A -> "Fuel pressure"
     0x0B -> "Intake manifold pressure"
     0x0C -> "Engine speed"
@@ -144,17 +187,56 @@ fun obdPidName(code: Int): String? = when (code) {
     0x0F -> "Intake air temperature"
     0x10 -> "Air flow (MAF)"
     0x11 -> "Throttle position"
+    0x12 -> "Secondary air status"
+    0x13 -> "Oxygen sensors present"
+    in 0x14..0x1B -> "Oxygen sensor ${code - 0x13} voltage"
+    0x1C -> "OBD standard"
+    0x1D -> "Oxygen sensors present (4 banks)"
+    0x1E -> "Auxiliary input status"
     0x1F -> "Run time since start"
     0x21 -> "Distance with fault light on"
+    0x22 -> "Fuel rail pressure (vacuum)"
+    0x23 -> "Fuel rail pressure"
+    in 0x24..0x2B -> "Oxygen sensor ${code - 0x23} lambda"
+    0x2C -> "Commanded EGR"
+    0x2D -> "EGR error"
+    0x2E -> "Commanded evaporative purge"
     0x2F -> "Fuel level"
+    0x30 -> "Warm-ups since codes cleared"
     0x31 -> "Distance since codes cleared"
+    0x32 -> "Evaporative system vapour pressure"
     0x33 -> "Barometric pressure"
+    in 0x34..0x3B -> "Oxygen sensor ${code - 0x33} lambda (current)"
+    0x3C -> "Catalyst temperature, bank 1 sensor 1"
+    0x3D -> "Catalyst temperature, bank 2 sensor 1"
+    0x3E -> "Catalyst temperature, bank 1 sensor 2"
+    0x3F -> "Catalyst temperature, bank 2 sensor 2"
+    0x41 -> "Monitor status this drive cycle"
     0x42 -> "Control module voltage"
     0x43 -> "Absolute load"
+    0x44 -> "Commanded air-fuel ratio (lambda)"
     0x45 -> "Relative throttle position"
     0x46 -> "Ambient air temperature"
+    0x47 -> "Absolute throttle position B"
+    0x48 -> "Absolute throttle position C"
+    0x49 -> "Accelerator pedal position D"
+    0x4A -> "Accelerator pedal position E"
+    0x4B -> "Accelerator pedal position F"
+    0x4C -> "Commanded throttle actuator"
+    0x4D -> "Time with fault light on"
+    0x4E -> "Time since codes cleared"
+    0x51 -> "Fuel type"
+    0x52 -> "Ethanol fuel"
+    0x59 -> "Fuel rail absolute pressure"
+    0x5A -> "Relative accelerator pedal position"
+    0x5B -> "Hybrid battery remaining life"
     0x5C -> "Engine oil temperature"
+    0x5D -> "Fuel injection timing"
     0x5E -> "Fuel rate"
+    0x5F -> "Emission requirements"
+    0x61 -> "Driver's demand torque"
+    0x62 -> "Actual engine torque"
+    0x63 -> "Engine reference torque"
     else -> null
 }
 
