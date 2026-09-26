@@ -71,6 +71,8 @@ import com.minhphan.launcher.obd.ObdField
 import com.minhphan.launcher.obd.ObdGroup
 import com.minhphan.launcher.obd.ObdState
 import com.minhphan.launcher.obd.SIMULATED_ADDRESS
+import com.minhphan.launcher.obd.VoltageCalibration
+import com.minhphan.launcher.obd.availableFields
 import com.minhphan.launcher.obd.bondedDevices
 import com.minhphan.cloud.AccountState
 import com.minhphan.cloud.SignInException
@@ -81,6 +83,7 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.math.roundToInt
 
 /** Above this width the settings go in two columns: the groups on the left, the dock apps on the right. */
 private val TwoColumnWidth = 840.dp
@@ -181,7 +184,11 @@ private fun GeneralSettings(
         }
 
         SettingsCard(R.string.settings_obd_fields_title) {
-            ObdFieldSettings(settings.obdFields, viewModel)
+            ObdFieldSettings(settings.shownObdFields, settings.carPids, viewModel)
+        }
+
+        SettingsCard(R.string.settings_voltage_title) {
+            VoltageCalibrationSettings(settings.voltageCalibration, viewModel)
         }
 
         SettingsCard(R.string.sync_title) {
@@ -267,22 +274,78 @@ private fun RadioRow(selected: Boolean, label: String, onClick: () -> Unit) {
 /** The size of the fuel tank, which the estimate of the fuel left counts down from. */
 @Composable
 private fun TankSize(liters: Int, onChange: (Int) -> Unit) {
+    StepperRow(stringResource(R.string.settings_tank_label, liters), { onChange(liters - 1) }, { onChange(liters + 1) })
+    Hint(stringResource(R.string.settings_tank_hint))
+}
+
+/** A value with a minus and a plus button. */
+@Composable
+private fun StepperRow(label: String, onMinus: () -> Unit, onPlus: () -> Unit) {
     Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(
-            text = stringResource(R.string.settings_tank_label, liters),
+            text = label,
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f),
         )
-        FilledTonalButton(onClick = { onChange(liters - 1) }, modifier = Modifier.heightIn(min = 56.dp)) {
+        FilledTonalButton(onClick = onMinus, modifier = Modifier.heightIn(min = 56.dp)) {
             Text("-", style = MaterialTheme.typography.titleLarge)
         }
         Spacer(Modifier.width(8.dp))
-        FilledTonalButton(onClick = { onChange(liters + 1) }, modifier = Modifier.heightIn(min = 56.dp)) {
+        FilledTonalButton(onClick = onPlus, modifier = Modifier.heightIn(min = 56.dp)) {
             Text("+", style = MaterialTheme.typography.titleLarge)
         }
     }
-    Hint(stringResource(R.string.settings_tank_hint))
+}
+
+/**
+ * The two readings that correct the adapter's battery voltage: for engine off and running, what the adapter said
+ * and what a multimeter read at the battery at the same time. The adapter's side can be taken from what it says now.
+ */
+@Composable
+private fun VoltageCalibrationSettings(calibration: VoltageCalibration, viewModel: LauncherViewModel) {
+    val state by viewModel.obd.collectAsStateWithLifecycle()
+    val adapterNow = (state as? ObdState.Connected)?.values?.adapterVoltage
+    fun set(value: VoltageCalibration) = viewModel.setVoltageCalibration(value)
+    fun step(value: Float, by: Float) = ((value + by) * 100).roundToInt() / 100f
+
+    Hint(stringResource(R.string.settings_voltage_hint))
+    Hint(
+        if (adapterNow == null) stringResource(R.string.settings_voltage_now_none)
+        else stringResource(R.string.settings_voltage_now, "%.1f".format(adapterNow), "%.2f".format(calibration.apply(adapterNow))),
+    )
+    SwitchRow(calibration.enabled, stringResource(R.string.settings_voltage_switch), "") { set(calibration.copy(enabled = it)) }
+    if (!calibration.enabled) return
+
+    Hint(stringResource(R.string.settings_voltage_off))
+    StepperRow(
+        stringResource(R.string.settings_voltage_adapter, "%.1f".format(calibration.offAdapter)),
+        { set(calibration.copy(offAdapter = step(calibration.offAdapter, -0.1f))) },
+        { set(calibration.copy(offAdapter = step(calibration.offAdapter, 0.1f))) },
+    )
+    StepperRow(
+        stringResource(R.string.settings_voltage_meter, "%.2f".format(calibration.offReal)),
+        { set(calibration.copy(offReal = step(calibration.offReal, -0.01f))) },
+        { set(calibration.copy(offReal = step(calibration.offReal, 0.01f))) },
+    )
+    if (adapterNow != null) {
+        ActionButton(stringResource(R.string.settings_voltage_take, "%.1f".format(adapterNow))) { set(calibration.copy(offAdapter = adapterNow)) }
+    }
+
+    Hint(stringResource(R.string.settings_voltage_running))
+    StepperRow(
+        stringResource(R.string.settings_voltage_adapter, "%.1f".format(calibration.runningAdapter)),
+        { set(calibration.copy(runningAdapter = step(calibration.runningAdapter, -0.1f))) },
+        { set(calibration.copy(runningAdapter = step(calibration.runningAdapter, 0.1f))) },
+    )
+    StepperRow(
+        stringResource(R.string.settings_voltage_meter, "%.2f".format(calibration.runningReal)),
+        { set(calibration.copy(runningReal = step(calibration.runningReal, -0.01f))) },
+        { set(calibration.copy(runningReal = step(calibration.runningReal, 0.01f))) },
+    )
+    if (adapterNow != null) {
+        ActionButton(stringResource(R.string.settings_voltage_take, "%.1f".format(adapterNow))) { set(calibration.copy(runningAdapter = adapterNow)) }
+    }
 }
 
 /** Signing in to the account the trips go to, and whether they are recorded. */
@@ -375,30 +438,28 @@ private fun SwitchRow(checked: Boolean, label: String, hint: String, onChange: (
 }
 
 /**
- * Which values the tiles on Home show. A value the car has said it does not have is marked, so the list of what
- * can be chosen is honest about what will stay empty; the list is read from the car when the adapter connects.
+ * Which values the tiles on Home show. Only the ones the car can fill are listed: what it answers is read when the
+ * adapter connects and remembered, so until the first connection everything is listed.
  */
 @Composable
-private fun ObdFieldSettings(chosen: List<ObdField>, viewModel: LauncherViewModel) {
-    val state by viewModel.obd.collectAsStateWithLifecycle()
-    val supported = when (val s = state) {
-        is ObdState.Connected -> s.values.supported
-        is ObdState.Connecting -> s.last?.supported
-        is ObdState.Problem -> s.last?.supported
-    }
+private fun ObdFieldSettings(chosen: List<ObdField>, carPids: Set<Int>?, viewModel: LauncherViewModel) {
+    val available = availableFields(carPids)
     Hint(stringResource(R.string.settings_obd_fields_hint, MAX_OBD_FIELDS))
+    Hint(
+        if (carPids == null) stringResource(R.string.settings_obd_fields_unknown)
+        else stringResource(R.string.settings_obd_fields_hidden, ObdField.entries.size - available.size),
+    )
     if (chosen.size >= MAX_OBD_FIELDS) Hint(stringResource(R.string.settings_obd_fields_full, MAX_OBD_FIELDS))
     // Folded groups keep the long list short; each says how many of its values are on, so nothing chosen is hidden.
     var open by rememberSaveable { mutableStateOf<ObdGroup?>(null) }
     ObdGroup.entries.forEach { group ->
-        val fields = ObdField.entries.filter { it.group == group }
+        val fields = available.filter { it.group == group }
+        if (fields.isEmpty()) return@forEach
         GroupRow(stringResource(group.label), fields.count { it in chosen }, expanded = open == group) {
             open = if (open == group) null else group
         }
         if (open == group) fields.forEach { field ->
-            val missing = supported != null && field.pid != null && field.pid.code !in supported
-            val name = stringResource(field.label) + if (missing) " (${stringResource(R.string.settings_obd_field_missing)})" else ""
-            SwitchRow(field in chosen, name, "") { on -> viewModel.setObdField(field, on) }
+            SwitchRow(field in chosen, stringResource(field.label), "") { on -> viewModel.setObdField(field, on) }
         }
     }
 }

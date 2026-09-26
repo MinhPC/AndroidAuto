@@ -141,6 +141,16 @@
     <string name="refuel_economy_preview">%1$s km/L</string>
     <string name="refuel_save">Save</string>
     <string name="refuel_cancel">Cancel</string>
+    <string name="settings_voltage_title">Battery voltage calibration</string>
+    <string name="settings_voltage_hint">The OBD adapter measures the voltage at the OBD port itself and can be well off. Measure across the battery with a multimeter while reading what the adapter says, once with the engine off (ignition on) and once running. The corrected voltage is shown on Home and sent to Firebase.</string>
+    <string name="settings_voltage_now">The adapter says %1$s V → shown as %2$s V</string>
+    <string name="settings_voltage_now_none">The adapter has not given a voltage yet (OBD must be connected).</string>
+    <string name="settings_voltage_switch">Correct the voltage</string>
+    <string name="settings_voltage_off">Engine off (ignition on):</string>
+    <string name="settings_voltage_running">Engine running:</string>
+    <string name="settings_voltage_adapter">Adapter says: %1$s V</string>
+    <string name="settings_voltage_meter">Multimeter: %1$s V</string>
+    <string name="settings_voltage_take">Use what the adapter says now (%1$s V)</string>
     <string name="settings_fuel_title">Fuel</string>
     <string name="settings_tank_label">Tank size: %1$d litres</string>
     <string name="settings_tank_hint">Used to estimate the fuel left and how far the car can go. Honda Civic (8th generation): 50 litres.</string>
@@ -194,7 +204,8 @@
     <string name="obd_group_faults">Faults and cleared codes</string>
     <string name="settings_obd_group_count">%1$d on</string>
     <string name="settings_obd_fields_title">OBD values on Home</string>
-    <string name="settings_obd_fields_hint">Choose up to %1$d values to show. A value the car does not have stays empty; see what the car has under Window diagnostics.</string>
-    <string name="settings_obd_field_missing">car does not have it</string>
+    <string name="settings_obd_fields_hint">Choose up to %1$d values to show. Only the values the car has are listed; see the details under Window diagnostics.</string>
+    <string name="settings_obd_fields_unknown">Not yet known what the car has: connect OBD once with the ignition on, and the values it lacks are hidden.</string>
+    <string name="settings_obd_fields_hidden">Hidden: %1$d values the car does not have.</string>
     <string name="settings_obd_fields_full">The most you can show is %1$d: switch one off to switch another on.</string>
 </resources>

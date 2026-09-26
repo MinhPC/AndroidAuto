@@ -16,6 +16,7 @@ import com.minhphan.launcher.diagnostics.DiagnosticLine
 import com.minhphan.launcher.diagnostics.runConnectivityTest
 import com.minhphan.launcher.obd.ObdField
 import com.minhphan.launcher.obd.ObdState
+import com.minhphan.launcher.obd.VoltageCalibration
 import com.minhphan.launcher.sync.SyncState
 import com.minhphan.trip.FuelBook
 import com.minhphan.trip.FuelEstimate
@@ -132,6 +133,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun setTankLiters(value: Int) = settingsStore.setTankLiters(value)
 
     fun setObdField(field: ObdField, on: Boolean) = settingsStore.setObdField(field, on)
+
+    fun setVoltageCalibration(value: VoltageCalibration) = settingsStore.setVoltageCalibration(value)
 
     fun setSyncTrips(value: Boolean) = settingsStore.setSyncTrips(value)
 

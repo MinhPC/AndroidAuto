@@ -3,6 +3,10 @@ package com.minhphan.launcher.data
 import android.content.Context
 import com.minhphan.launcher.obd.DEFAULT_OBD_FIELDS
 import com.minhphan.launcher.obd.ObdField
+import com.minhphan.launcher.obd.VoltageCalibration
+import com.minhphan.launcher.obd.availableFields
+import com.minhphan.launcher.obd.decodeCarPids
+import com.minhphan.launcher.obd.encodeCarPids
 import com.minhphan.launcher.obd.decodeObdFields
 import com.minhphan.launcher.obd.encodeObdFields
 import com.minhphan.launcher.obd.withField
@@ -30,7 +34,14 @@ data class LauncherSettings(
     val tankLiters: Int = DEFAULT_TANK_LITERS,
     /** What the tiles on Home show, in the order of [ObdField]. */
     val obdFields: List<ObdField> = DEFAULT_OBD_FIELDS,
-)
+    /** How the adapter's battery voltage is corrected to what a multimeter reads at the battery. */
+    val voltageCalibration: VoltageCalibration = VoltageCalibration(),
+    /** The mode 01 PIDs the car said it answers, the last time it said; null until then. */
+    val carPids: Set<Int>? = null,
+) {
+    /** The chosen values the car can fill: what Home shows. The others stay saved, in case the car lists them again. */
+    val shownObdFields: List<ObdField> get() = obdFields.filter { it in availableFields(carPids) }
+}
 
 /** A Honda Civic (8th generation) holds 50 litres. */
 const val DEFAULT_TANK_LITERS = 50
@@ -59,9 +70,22 @@ class SettingsStore(context: Context) {
 
     /** Switches one of the values on Home on or off; at most nine can be on. */
     fun setObdField(field: ObdField, on: Boolean) {
-        val fields = withField(_settings.value.obdFields, field, on)
+        val fields = withField(_settings.value.shownObdFields, field, on)
         prefs.edit().putString(KEY_OBD_FIELDS, encodeObdFields(fields)).apply()
         _settings.value = _settings.value.copy(obdFields = fields)
+    }
+
+    /**
+     * Remembers what the car answers, so values it does not have are neither offered nor shown, even while the
+     * adapter is not connected. Added to what it said before: a support block that timed out on one connection must
+     * not hide values the car does have.
+     */
+    fun setCarPids(pids: Set<Int>) {
+        val current = _settings.value
+        val merged = (current.carPids ?: emptySet()) + pids
+        if (merged == current.carPids) return
+        prefs.edit().putString(KEY_CAR_PIDS, encodeCarPids(merged)).apply()
+        _settings.value = current.copy(carPids = merged)
     }
 
     fun setTankLiters(value: Int) {
@@ -70,12 +94,36 @@ class SettingsStore(context: Context) {
         _settings.value = _settings.value.copy(tankLiters = liters)
     }
 
+    fun setVoltageCalibration(value: VoltageCalibration) {
+        prefs.edit()
+            .putBoolean(KEY_VOLT_ON, value.enabled)
+            .putFloat(KEY_VOLT_OFF_ADAPTER, value.offAdapter)
+            .putFloat(KEY_VOLT_OFF_REAL, value.offReal)
+            .putFloat(KEY_VOLT_RUN_ADAPTER, value.runningAdapter)
+            .putFloat(KEY_VOLT_RUN_REAL, value.runningReal)
+            .apply()
+        _settings.value = _settings.value.copy(voltageCalibration = value)
+    }
+
+    private fun readVoltageCalibration(): VoltageCalibration {
+        val default = VoltageCalibration()
+        return VoltageCalibration(
+            enabled = prefs.getBoolean(KEY_VOLT_ON, default.enabled),
+            offAdapter = prefs.getFloat(KEY_VOLT_OFF_ADAPTER, default.offAdapter),
+            offReal = prefs.getFloat(KEY_VOLT_OFF_REAL, default.offReal),
+            runningAdapter = prefs.getFloat(KEY_VOLT_RUN_ADAPTER, default.runningAdapter),
+            runningReal = prefs.getFloat(KEY_VOLT_RUN_REAL, default.runningReal),
+        )
+    }
+
     private fun read() = LauncherSettings(
         theme = enumOrDefault(prefs.getString(KEY_THEME, null), ThemeMode.Auto),
         obdAddress = prefs.getString(KEY_OBD, "").orEmpty(),
         syncTrips = prefs.getBoolean(KEY_SYNC, true),
         tankLiters = prefs.getInt(KEY_TANK, DEFAULT_TANK_LITERS).coerceIn(TANK_LITERS_RANGE),
         obdFields = decodeObdFields(prefs.getString(KEY_OBD_FIELDS, null)),
+        voltageCalibration = readVoltageCalibration(),
+        carPids = decodeCarPids(prefs.getString(KEY_CAR_PIDS, null)),
     )
 
     private companion object {
@@ -84,6 +132,12 @@ class SettingsStore(context: Context) {
         const val KEY_SYNC = "sync_trips"
         const val KEY_TANK = "tank_liters"
         const val KEY_OBD_FIELDS = "obd_fields"
+        const val KEY_CAR_PIDS = "car_pids"
+        const val KEY_VOLT_ON = "voltage_calibration"
+        const val KEY_VOLT_OFF_ADAPTER = "voltage_off_adapter"
+        const val KEY_VOLT_OFF_REAL = "voltage_off_real"
+        const val KEY_VOLT_RUN_ADAPTER = "voltage_running_adapter"
+        const val KEY_VOLT_RUN_REAL = "voltage_running_real"
     }
 }
 

@@ -87,6 +87,16 @@ fun decodeObdFields(text: String?): List<ObdField> {
     return ObdField.entries.filter { it.name in names }
 }
 
+/** The fields this car can fill: all of them while [carPids] (what the car said it answers) is unknown. */
+fun availableFields(carPids: Set<Int>?): List<ObdField> =
+    ObdField.entries.filter { it.pid == null || carPids == null || it.pid.code in carPids }
+
+/** The PIDs the car answers as saved in the settings ("05,0C,…"); null when never read or unreadable. */
+fun decodeCarPids(text: String?): Set<Int>? =
+    text?.split(",")?.filter { it.isNotEmpty() }?.map { it.toIntOrNull(16) ?: return null }?.toSet()
+
+fun encodeCarPids(pids: Set<Int>): String = pids.sorted().joinToString(",") { "%02X".format(it) }
+
 /** The pids that have to be asked for, on top of the ones always asked, to show [fields]. */
 fun extraPidsFor(fields: List<ObdField>): Set<Pid> = fields.mapNotNull { it.pid }.toSet()
 

@@ -82,6 +82,8 @@ data class ObdValues(
     val throttlePercent: Int? = null,
     val fuelTrimPercent: Int? = null,
     val voltage: Float? = null,
+    /** The battery voltage as the adapter said it, before [VoltageCalibration]; null until calibrated. */
+    val adapterVoltage: Float? = null,
     /** The mode 01 PIDs the car says it answers, from its support bitmaps; null when it did not say. */
     val supported: Set<Int>? = null,
     /** The values of the other PIDs the driver has chosen to show. */

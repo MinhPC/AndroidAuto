@@ -141,6 +141,16 @@
     <string name="refuel_economy_preview">%1$s km/lít</string>
     <string name="refuel_save">Lưu</string>
     <string name="refuel_cancel">Huỷ</string>
+    <string name="settings_voltage_title">Hiệu chỉnh điện áp ắc quy</string>
+    <string name="settings_voltage_hint">Bộ đọc OBD tự đo điện áp ở cổng OBD và có thể lệch nhiều so với thực tế. Đo ở hai cọc ắc quy bằng đồng hồ vạn năng, cùng lúc xem số bộ đọc báo, một lần khi tắt máy (bật khóa điện) và một lần khi nổ máy. Số đã hiệu chỉnh được hiện trên Home và gửi lên Firebase.</string>
+    <string name="settings_voltage_now">Bộ đọc đang báo %1$s V → hiển thị %2$s V</string>
+    <string name="settings_voltage_now_none">Bộ đọc chưa báo điện áp (cần kết nối OBD).</string>
+    <string name="settings_voltage_switch">Hiệu chỉnh điện áp</string>
+    <string name="settings_voltage_off">Khi tắt máy (khóa điện bật):</string>
+    <string name="settings_voltage_running">Khi nổ máy:</string>
+    <string name="settings_voltage_adapter">Bộ đọc báo: %1$s V</string>
+    <string name="settings_voltage_meter">Đồng hồ đo: %1$s V</string>
+    <string name="settings_voltage_take">Lấy số bộ đọc đang báo (%1$s V)</string>
     <string name="settings_fuel_title">Nhiên liệu</string>
     <string name="settings_tank_label">Dung tích bình: %1$d lít</string>
     <string name="settings_tank_hint">Dùng để ước tính lượng xăng còn lại và quãng đường chạy được. Honda Civic đời 8: 50 lít.</string>
@@ -194,7 +204,8 @@
     <string name="obd_group_faults">Lỗi và xoá lỗi</string>
     <string name="settings_obd_group_count">%1$d đang bật</string>
     <string name="settings_obd_fields_title">Thông số OBD trên trang chủ</string>
-    <string name="settings_obd_fields_hint">Chọn tối đa %1$d thông số hiển thị. Thông số xe không có sẽ để trống; xem xe có gì ở Chẩn đoán cửa sổ.</string>
-    <string name="settings_obd_field_missing">xe không có</string>
+    <string name="settings_obd_fields_hint">Chọn tối đa %1$d thông số hiển thị. Chỉ các thông số xe hỗ trợ mới được liệt kê; xem chi tiết ở Chẩn đoán cửa sổ.</string>
+    <string name="settings_obd_fields_unknown">Chưa biết xe hỗ trợ thông số nào: kết nối OBD một lần khi bật khóa điện, các thông số xe không có sẽ tự ẩn.</string>
+    <string name="settings_obd_fields_hidden">Đã ẩn %1$d thông số xe không hỗ trợ.</string>
     <string name="settings_obd_fields_full">Đã chọn tối đa %1$d thông số, hãy tắt bớt một cái để bật cái khác.</string>
 </resources>

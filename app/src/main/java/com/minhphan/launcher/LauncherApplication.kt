@@ -28,7 +28,7 @@ class LauncherApplication : Application() {
     val recorderDispatcher = Dispatchers.Default.limitedParallelism(1)
 
     val settingsStore by lazy { SettingsStore(this) }
-    val obdHub by lazy { ObdHub(this, settingsStore.settings, appScope) }
+    val obdHub by lazy { ObdHub(this, settingsStore.settings, appScope, settingsStore::setCarPids) }
     val cloud by lazy { CloudAccount(this) }
     val driveLog by lazy { DriveLog(this) }
     val syncStatus = SyncStatus()

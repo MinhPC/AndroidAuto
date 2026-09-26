@@ -53,4 +53,21 @@ class ObdFieldTest {
         assertNull(values.reading(ObdField.OIL))
         assertNull(values.with(Pid.Map, null).reading(ObdField.MAP))
     }
+
+    @Test
+    fun onlyTheFieldsTheCarHasAreAvailableOnceItHasSaid() {
+        assertEquals(ObdField.entries, availableFields(null))
+        val fields = availableFields(setOf(0x05, 0x0C))
+        assertTrue(ObdField.COOLANT in fields && ObdField.RPM in fields && ObdField.VOLTAGE in fields)
+        assertTrue(ObdField.OIL !in fields && ObdField.MAP !in fields)
+    }
+
+    @Test
+    fun theCarsPidsAreSavedAndReadBack() {
+        assertEquals("05,0C,42", encodeCarPids(setOf(0x42, 0x05, 0x0C)))
+        assertEquals(setOf(0x05, 0x0C, 0x42), decodeCarPids("05,0C,42"))
+        assertEquals(emptySet<Int>(), decodeCarPids(""))
+        assertNull(decodeCarPids(null))
+        assertNull(decodeCarPids("05,zz"))
+    }
 }

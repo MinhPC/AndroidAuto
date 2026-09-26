@@ -137,7 +137,7 @@ fun LauncherApp(viewModel: LauncherViewModel) {
             totalKm = viewModel.totalKm,
             fuel = viewModel.fuelBook,
             fuelEstimate = viewModel.fuelEstimate,
-            fields = settings.obdFields,
+            fields = settings.shownObdFields,
             recording = recording,
             bluetooth = bluetooth,
             onStartTrip = viewModel::startTrip,
