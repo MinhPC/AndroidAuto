@@ -8,12 +8,12 @@ import kotlin.math.roundToInt
  * circuit and can be well off. Two readings taken beside a multimeter at the battery, one with the engine off and
  * one with it running, give a straight line from what the adapter says to the real voltage.
  *
- * The defaults are this car's adapter (iCar Pro): 11.4 V for 12.8 V engine off, 13.1 V for 14.78 V running.
+ * The defaults are this car's adapter (iCar Pro): 11.4 V for 12.78 V engine off, 13.1 V for 14.78 V running.
  */
 data class VoltageCalibration(
     val enabled: Boolean = true,
     val offAdapter: Float = 11.4f,
-    val offReal: Float = 12.8f,
+    val offReal: Float = 12.78f,
     val runningAdapter: Float = 13.1f,
     val runningReal: Float = 14.78f,
 ) {

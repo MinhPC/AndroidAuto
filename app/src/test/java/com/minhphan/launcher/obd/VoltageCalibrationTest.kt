@@ -9,14 +9,14 @@ class VoltageCalibrationTest {
 
     @Test
     fun theTwoMeasuredReadingsGiveTheMultimetersVoltage() {
-        assertEquals(12.8f, calibration.apply(11.4f), 0.001f)
+        assertEquals(12.78f, calibration.apply(11.4f), 0.001f)
         assertEquals(14.78f, calibration.apply(13.1f), 0.001f)
     }
 
     @Test
     fun readingsInBetweenAndBeyondFollowTheLine() {
         assertEquals(13.72f, calibration.apply(12.2f), 0.011f)
-        assertEquals(12.67f, calibration.apply(11.3f), 0.011f)
+        assertEquals(12.66f, calibration.apply(11.3f), 0.001f)
     }
 
     @Test

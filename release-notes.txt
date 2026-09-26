@@ -1,3 +1,1 @@
-Sửa lỗi khi bấm "Kiểm tra cập nhật" mà đầu xe chưa có mạng: thông báo lỗi (ví dụ "chưa phân giải được tên miền")
-chiếm hết chỗ và đẩy nút "Thử lại" ra ngoài, làm mất luôn cách bấm lại. Giờ thông báo tự rút gọn để nút "Thử lại"
-luôn hiện đầy đủ.
+Sửa mốc "tắt máy" của hiệu chỉnh điện áp ắc quy từ 12.80 xuống 12.78 V, đúng với số đo lại bằng đồng hồ vạn năng.
