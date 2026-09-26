@@ -26,3 +26,4 @@ mock_service_account.json
 /cloud/build/
 /shared/build/
 .vscode/settings.json
+.kotlin/sessions/kotlin-compiler-5935134532025900472.salive
