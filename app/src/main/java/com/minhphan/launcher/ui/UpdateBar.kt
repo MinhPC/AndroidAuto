@@ -61,14 +61,20 @@ fun UpdateBar(
                     Text(stringResource(R.string.downloading_update, state.percent), style = MaterialTheme.typography.bodyMedium, color = muted)
                 is UpdateState.Installing ->
                     Text(stringResource(R.string.installing_update), style = MaterialTheme.typography.bodyMedium, color = muted)
-                is UpdateState.Failed -> Row(verticalAlignment = Alignment.CenterVertically) {
+                // Bounded to what is left beside the version label: a long message (the DNS/network ones run long)
+                // wraps and ellipsizes here instead of pushing the retry button past the edge of the card, where it
+                // used to end up invisible.
+                is UpdateState.Failed -> Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f, fill = false),
+                ) {
                     Text(
                         text = stringResource(state.messageRes),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(end = 8.dp),
+                        modifier = Modifier.weight(1f, fill = false).padding(end = 8.dp),
                     )
                     TextButton(onClick = { state.info?.let(onInstall) ?: onCheck() }, modifier = minHeight) {
                         Text(stringResource(R.string.update_retry))

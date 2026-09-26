@@ -1,4 +1,3 @@
-Hiệu chỉnh điện áp ắc quy: bộ đọc OBD tự đo điện áp và có thể lệch so với thực tế; Cài đặt → Hiệu chỉnh điện áp
-ắc quy cho nhập hai điểm đo (tắt máy và nổ máy, cùng lúc xem đồng hồ vạn năng) để sửa số hiện trên trang chủ và
-số gửi lên Firebase. Cài đặt → Thông số OBD trên trang chủ giờ chỉ liệt kê các thông số xe thực sự trả lời, thay
-vì cả 24 thông số kèm ghi chú "xe không có"; danh sách được nhớ lại từ lần kết nối trước.
+Sửa lỗi khi bấm "Kiểm tra cập nhật" mà đầu xe chưa có mạng: thông báo lỗi (ví dụ "chưa phân giải được tên miền")
+chiếm hết chỗ và đẩy nút "Thử lại" ra ngoài, làm mất luôn cách bấm lại. Giờ thông báo tự rút gọn để nút "Thử lại"
+luôn hiện đầy đủ.
