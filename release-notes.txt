@@ -1,1 +1,4 @@
-Thêm 24 thông số OBD-II chuẩn như trên Car Scanner để hiện trên trang chủ: điện áp ECU, lượng xăng tiêu thụ (L/h), tỉ lệ khí/xăng (lambda), áp suất nhiên liệu và ống phân phối, nhiệt độ bộ xúc tác, bàn đạp ga, bướm ga, tải tuyệt đối, mô-men xoắn, hiệu chỉnh xăng dãy 2, EGR, thời gian từ lúc nổ máy, quãng đường và thời gian đèn lỗi sáng, quãng đường từ lúc xoá lỗi. Danh sách thông số trong Cài đặt được chia thành nhóm gập/mở (Động cơ, Nhiệt độ, Nhiên liệu, Khí nạp và khí thải, Điện, Lỗi), mỗi nhóm ghi số thông số đang bật. Màn hình Chẩn đoán gọi tên gần như mọi thông số xe báo có, kể cả các cảm biến oxy.
+Hiệu chỉnh điện áp ắc quy: bộ đọc OBD tự đo điện áp và có thể lệch so với thực tế; Cài đặt → Hiệu chỉnh điện áp
+ắc quy cho nhập hai điểm đo (tắt máy và nổ máy, cùng lúc xem đồng hồ vạn năng) để sửa số hiện trên trang chủ và
+số gửi lên Firebase. Cài đặt → Thông số OBD trên trang chủ giờ chỉ liệt kê các thông số xe thực sự trả lời, thay
+vì cả 24 thông số kèm ghi chú "xe không có"; danh sách được nhớ lại từ lần kết nối trước.
