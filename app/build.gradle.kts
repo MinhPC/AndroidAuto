@@ -14,8 +14,8 @@ if (file("google-services.json").exists()) {
 }
 
 // Bump both on every release. The updater compares versionCode, so it must always increase.
-val appVersionCode = 20
-val appVersionName = "1.13.0"
+val appVersionCode = 21
+val appVersionName = "1.14.0"
 
 // HTTPS folder that hosts update.json and the APKs (see gradle.properties). Empty disables in-app updates.
 val updateBaseUrl = providers.gradleProperty("UPDATE_BASE_URL").getOrElse("").trim().trimEnd('/')

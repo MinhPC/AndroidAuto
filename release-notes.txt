@@ -1,6 +1,5 @@
-Giao diện mới: chiếc Civic trên đường ven sông, theo ngày và đêm, sáng đèn phanh khi giảm tốc, đèn pha ban đêm và nhún theo mặt đường khi xe chạy.
-Thông số động cơ hiển thị thành từng ô kính riêng, trạng thái OBD chỉ còn chấm màu.
-Thiết kế lại thanh ứng dụng và màn hình Tất cả ứng dụng, có thêm mục Hay dùng.
-Thêm ngày âm lịch dưới ngày dương.
-Sửa lỗi màn hình Tất cả ứng dụng chỉ hiện vài ứng dụng trên Android 11 trở lên.
-Ứng dụng nhẹ hơn khoảng 15%.
+Tự chọn ứng dụng trên thanh dưới trang chủ (tối đa 4) trong Cài đặt → Thanh ứng dụng, hoặc nhấn giữ một ứng dụng trong Tất cả ứng dụng. Bỏ nút Trang chủ.
+Trang chủ gọn hơn trên màn hình 240 dpi (1024×600, 1280×720): thông số không còn bị cắt.
+Chấm GPS và OBD nhấp nháy trong một phút khi mất tín hiệu hoặc mất kết nối.
+Giữ kết nối OBD khi mở bản đồ hay nhạc, quay lại trang chủ có số liệu ngay.
+Ghi hành trình qua hầm chính xác hơn: quãng đường tính theo tốc độ OBD, chuyến không bị cắt khi kẹt xe trong hầm, đỗ dưới hầm gửi xe thì chuyến kết thúc đúng lúc tắt máy.
