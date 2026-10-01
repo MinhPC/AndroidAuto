@@ -23,7 +23,7 @@ import com.minhphan.launcher.inAppLanguage
 import com.minhphan.launcher.data.DriveState
 import com.minhphan.launcher.data.SpeedSource
 import com.minhphan.launcher.data.carSpeed
-import com.minhphan.launcher.data.gpsLocations
+import com.minhphan.launcher.data.GpsUse
 import com.minhphan.launcher.data.nextMoving
 import com.minhphan.launcher.obd.ObdProblem
 import com.minhphan.launcher.obd.ObdState
@@ -105,9 +105,10 @@ class TripRecorderService : Service() {
         val speeds = ClockSpeeds()
         scope.launch { app.obdHub.states.collect { speeds.obdKmh = (it as? ObdState.Connected)?.values?.speedKmh } }
         scope.launch {
-            gpsLocations(this@TripRecorderService).collect {
-                speeds.gpsKmh = if (it.hasSpeed()) it.speed * 3.6f else 0f
-                speeds.gpsAt = SystemClock.elapsedRealtime()
+            app.gpsHub.readings(GpsUse.Speed).collect { reading ->
+                val location = reading.location
+                speeds.gpsKmh = if (location?.hasSpeed() == true) location.speed * 3.6f else 0f
+                speeds.gpsAt = location?.elapsedRealtimeNanos?.div(1_000_000) ?: 0L
             }
         }
         scope.launch {
@@ -166,7 +167,8 @@ class TripRecorderService : Service() {
             }
         }
         scope.launch {
-            gpsLocations(this@TripRecorderService).collect { location ->
+            app.gpsHub.readings(GpsUse.Recording).collect { reading ->
+                val location = reading.location ?: return@collect
                 val fix = location.toFix(obdSpeedKmh)
                 lastFixTime = fix.timeMs
                 lastFixElapsed = SystemClock.elapsedRealtime()

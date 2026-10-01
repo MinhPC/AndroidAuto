@@ -3,6 +3,7 @@ package com.minhphan.launcher
 import android.app.Application
 import android.content.Context
 import com.minhphan.launcher.data.DriveLog
+import com.minhphan.launcher.data.GpsHub
 import com.minhphan.launcher.data.HeadlightMonitor
 import com.minhphan.launcher.data.SettingsStore
 import com.minhphan.launcher.obd.ObdHub
@@ -34,6 +35,7 @@ class LauncherApplication : Application() {
     val settingsStore by lazy { SettingsStore(this) }
     val headlights by lazy { HeadlightMonitor(this) }
     val obdHub by lazy { ObdHub(this, settingsStore.settings, appScope, settingsStore::setCarPids) }
+    internal val gpsHub by lazy { GpsHub(this, appScope, obdHub.states) }
     val cloud by lazy { CloudAccount(this) }
     val driveLog by lazy { DriveLog(this) }
     val syncStatus = SyncStatus()

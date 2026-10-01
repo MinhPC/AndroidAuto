@@ -11,12 +11,14 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.transformLatest
 
 /** What the GPS says about the car right now. */
 sealed interface DriveState {
     data object NoPermission : DriveState
+
+    /** GPS is intentionally idle because no consumer currently needs it. */
+    data object NotNeeded : DriveState
 
     /** Permission granted, but no recent fix (GPS still searching, or lost). */
     data object NoFix : DriveState
@@ -65,9 +67,9 @@ fun nextMoving(wasMoving: Boolean, speed: CarSpeed): Boolean = when (speed.sourc
 
 private const val OBD_MOVING_KMH = 1f
 
-/** GPS fixes about once a second. The caller must hold ACCESS_FINE_LOCATION; without it the flow just ends. */
+/** GPS at the requested interval. Cancelling the sole upstream collector unregisters its listener. */
 @SuppressLint("MissingPermission")
-internal fun gpsLocations(context: Context): Flow<Location> = callbackFlow {
+internal fun gpsLocations(context: Context, intervalMs: Long): Flow<Location> = callbackFlow {
     val manager = context.getSystemService(LocationManager::class.java)
     val listener = object : LocationListenerCompat {
         override fun onLocationChanged(location: Location) {
@@ -75,7 +77,7 @@ internal fun gpsLocations(context: Context): Flow<Location> = callbackFlow {
         }
     }
     try {
-        manager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1_000L, 0f, listener, Looper.getMainLooper())
+        manager.requestLocationUpdates(LocationManager.GPS_PROVIDER, intervalMs, 0f, listener, Looper.getMainLooper())
     } catch (_: SecurityException) {
         close()
         return@callbackFlow
@@ -88,11 +90,18 @@ internal fun gpsLocations(context: Context): Flow<Location> = callbackFlow {
 
 /** Speed from GPS, and back to [DriveState.NoFix] when no new fix arrives for a few seconds. */
 @OptIn(ExperimentalCoroutinesApi::class)
-fun driveStates(context: Context): Flow<DriveState> =
-    gpsLocations(context)
-        .map<Location, DriveState> { DriveState.Fix(if (it.hasSpeed()) it.speed * MPS_TO_KMH else 0f) }
-        .transformLatest { state ->
+internal fun driveStates(gps: GpsHub): Flow<DriveState> =
+    gps.readings(GpsUse.Speed)
+        .transformLatest { reading ->
+            val fix = reading.location
+            val state = when {
+                !reading.requested -> DriveState.NotNeeded
+                fix == null -> DriveState.NoFix
+                else -> DriveState.Fix(if (fix.hasSpeed()) fix.speed * MPS_TO_KMH else 0f)
+            }
             emit(state)
-            delay(STALE_FIX_MS)
-            emit(DriveState.NoFix)
+            if (state is DriveState.Fix) {
+                delay(maxOf(STALE_FIX_MS, reading.intervalMs * 2))
+                emit(DriveState.NoFix)
+            }
         }

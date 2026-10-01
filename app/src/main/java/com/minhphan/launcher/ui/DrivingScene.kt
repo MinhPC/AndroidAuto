@@ -60,6 +60,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.minhphan.launcher.R
+import com.minhphan.launcher.LauncherApplication
 import com.minhphan.launcher.data.CarSpeed
 import com.minhphan.launcher.data.DriveState
 import com.minhphan.launcher.data.SpeedSource
@@ -121,7 +122,14 @@ fun DrivingScene(
         onPauseOrDispose { }
     }
 
-    val driveFlow = remember(granted) { if (granted) driveStates(context) else flowOf<DriveState>(DriveState.NoPermission) }
+    val gps = remember(context) { (context.applicationContext as LauncherApplication).gpsHub }
+    val driveFlow = remember(granted, covered, gps) {
+        when {
+            !granted -> flowOf<DriveState>(DriveState.NoPermission)
+            covered -> flowOf<DriveState>(DriveState.NotNeeded)
+            else -> driveStates(gps)
+        }
+    }
     val drive by driveFlow.collectAsStateWithLifecycle(initialValue = DriveState.NoFix)
 
     // Only the speed is taken from the adapter here, so its other readings do not redraw the scene.
@@ -213,7 +221,7 @@ fun DrivingScene(
                         }
                     }
                 }
-                GpsDot(hasFix)
+                GpsDot(hasFix, idle = drive == DriveState.NotNeeded)
             }
 
             TripButton(
@@ -233,8 +241,12 @@ private val GpsGreen = Color(0xFF34C759)
  * the dot blinks for a while ([blinkWhile]), the ring stays.
  */
 @Composable
-private fun GpsDot(hasFix: Boolean) {
-    val description = stringResource(if (hasFix) R.string.gps_signal_ok else R.string.gps_signal_none)
+private fun GpsDot(hasFix: Boolean, idle: Boolean) {
+    val description = stringResource(when {
+        idle -> R.string.gps_idle
+        hasFix -> R.string.gps_signal_ok
+        else -> R.string.gps_signal_none
+    })
     Box(
         Modifier
             .semantics { contentDescription = description }
@@ -243,7 +255,8 @@ private fun GpsDot(hasFix: Boolean) {
             .background(Color.Black.copy(alpha = 0.55f))
             .padding(2.dp),
     ) {
-        Box(Modifier.fillMaxSize().blinkWhile(!hasFix).clip(CircleShape).background(if (hasFix) GpsGreen else GpsRed))
+        Box(Modifier.fillMaxSize().blinkWhile(!hasFix && !idle).clip(CircleShape)
+            .background(if (idle) Color(0xFF8E9BAE) else if (hasFix) GpsGreen else GpsRed))
     }
 }
 
