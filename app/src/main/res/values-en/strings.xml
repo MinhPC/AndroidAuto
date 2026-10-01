@@ -55,7 +55,6 @@
     <string name="sun_times">Today the sun rises at %1$s and sets at %2$s (at the last GPS position)</string>
     <string name="sun_unknown">No GPS position yet, so daytime is assumed from 06:00 to 18:00.</string>
     <string name="settings_park_hint">Only change settings while the car is parked.</string>
-    <string name="obd_title">Engine data</string>
     <string name="obd_coolant">Coolant</string>
     <string name="obd_intake">Intake air</string>
     <string name="obd_load">Engine load</string>

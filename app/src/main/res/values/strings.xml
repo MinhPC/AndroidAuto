@@ -54,7 +54,6 @@
     <string name="sun_times">Hôm nay mặt trời mọc %1$s, lặn %2$s (theo vị trí GPS gần nhất)</string>
     <string name="sun_unknown">Chưa có vị trí GPS nên tạm dùng ban ngày từ 06:00 đến 18:00.</string>
     <string name="settings_park_hint">Chỉ đổi cài đặt khi đã dừng xe.</string>
-    <string name="obd_title">Thông số động cơ</string>
     <string name="obd_coolant">Nước làm mát</string>
     <string name="obd_intake">Khí nạp</string>
     <string name="obd_load">Tải động cơ</string>
