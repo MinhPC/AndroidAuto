@@ -74,9 +74,9 @@ internal class LaneMarkings(private val scale: Float, color: Color, middle: Floa
      * The dashes, [phaseMetres] into their period, smeared over a frame at [speedMps]. The scope must be translated so
      * the picture's top left is at 0, 0.
      */
-    fun DrawScope.drawDashes(phaseMetres: Float, speedMps: Float) {
+    fun DrawScope.drawDashes(phaseMetres: Float, speedMps: Float, frameSeconds: Float = SMEAR_SECONDS) {
         dashes.rewind()
-        forEachDash(phaseMetres, DASH_LENGTH_M + speedMps * SMEAR_SECONDS) { near, far ->
+        forEachDash(phaseMetres, DASH_LENGTH_M + speedMps * frameSeconds.coerceIn(0f, 0.05f)) { near, far ->
             dashes.addDash(leftX, laneY(far), laneY(near))
             dashes.addDash(rightX, laneY(far), laneY(near))
         }

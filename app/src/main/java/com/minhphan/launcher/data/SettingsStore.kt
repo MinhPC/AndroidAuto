@@ -41,6 +41,8 @@ data class LauncherSettings(
     val carPids: Set<Int>? = null,
     /** The dock's buttons before all apps and settings, in order: [DockShortcut] ids and app keys. */
     val dockApps: List<String> = DEFAULT_DOCK_APPS,
+    /** Lower scene frame rate and omit road blur on slower head units. */
+    val energySaving: Boolean = false,
 ) {
     /** The chosen values the car can fill: what Home shows. The others stay saved, in case the car lists them again. */
     val shownObdFields: List<ObdField> get() = obdFields.filter { it in availableFields(carPids) }
@@ -57,6 +59,11 @@ class SettingsStore(context: Context) {
     fun setTheme(value: ThemeMode) {
         prefs.edit().putString(KEY_THEME, value.name).apply()
         _settings.value = _settings.value.copy(theme = value)
+    }
+
+    fun setEnergySaving(value: Boolean) {
+        prefs.edit().putBoolean(KEY_ENERGY_SAVING, value).apply()
+        _settings.value = _settings.value.copy(energySaving = value)
     }
 
     fun setObdAddress(value: String) {
@@ -125,10 +132,12 @@ class SettingsStore(context: Context) {
         voltageCalibration = readVoltageCalibration(),
         carPids = decodeCarPids(prefs.getString(KEY_CAR_PIDS, null)),
         dockApps = decodeDockApps(prefs.getString(KEY_DOCK_APPS, null)),
+        energySaving = prefs.getBoolean(KEY_ENERGY_SAVING, false),
     )
 
     private companion object {
         const val KEY_THEME = "theme_mode"
+        const val KEY_ENERGY_SAVING = "energy_saving"
         const val KEY_OBD = "obd_address"
         const val KEY_SYNC = "sync_trips"
         const val KEY_OBD_FIELDS = "obd_fields"

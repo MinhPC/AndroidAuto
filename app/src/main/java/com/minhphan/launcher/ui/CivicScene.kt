@@ -1,9 +1,15 @@
 package com.minhphan.launcher.ui
 
+import android.content.res.Resources
+import android.hardware.display.DisplayManager
+import android.os.Handler
+import android.os.Looper
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -28,6 +34,11 @@ import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.imageResource
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.layout.onSizeChanged
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.unit.IntSize
 import com.minhphan.launcher.R
 import kotlin.math.ceil
@@ -63,8 +74,7 @@ private const val LANE_PER_CAR = 0.972f
 /**
  * A road picture, the colour of its top row, which fills the scene above it where the scene is taller than the
  * picture, and the colour of the lane's paint on it ([LaneMarkings]). [shore] is the far shore with the Dragon Bridge
- * painted out, to lay over the picture at [SHORE_AT] where it is mirrored, so the bridge is not seen twice; see
- * [withShore].
+ * painted out, to lay over the picture at [SHORE_AT] where it is mirrored, so the bridge is not seen twice.
  */
 private class Road(@DrawableRes val res: Int, @DrawableRes val shore: Int, val skyTop: Color, val lane: Color)
 
@@ -133,6 +143,7 @@ fun CivicScene(
     covered: Boolean,
     modifier: Modifier = Modifier,
     focusFraction: Float = 1f,
+    energySaving: Boolean = false,
 ) {
     val speed = remember { SpeedFollower() }
     // The body on its springs; see Suspension.
@@ -142,36 +153,47 @@ fun CivicScene(
     var roll by remember { mutableFloatStateOf(0f) }
     var lanePhase by remember { mutableFloatStateOf(0f) }
     var laneSpeedKmh by remember { mutableFloatStateOf(0f) }
+    var laneFrameSeconds by remember { mutableFloatStateOf(1f / 60f) }
     var braking by remember { mutableStateOf(false) }
     val target by rememberUpdatedState(targetSpeedKmh)
     val quick by rememberUpdatedState(quickSpeed)
 
     // The dark theme is the night, or the headlights on: the tail lights are on with them.
     val night = LocalDarkTheme.current
-    val roadKind = if (night) NightRoad else DayRoad
-    val road = ImageBitmap.imageResource(roadKind.res)
-    val shore = ImageBitmap.imageResource(roadKind.shore)
-    // Only the two cars for this time of day are loaded and scaled; the others wait until it changes.
-    val car = ImageBitmap.imageResource(if (night) R.drawable.car_night else R.drawable.car_day)
-    val carBraking = ImageBitmap.imageResource(if (night) R.drawable.car_brake_night else R.drawable.car_brake_day)
-    val scaledRoad = remember { Scaled() }
-    val blurredRoad = remember { ZoomBlurred() }
-    val seamPatch = remember { SeamPatch() }
-    val scaledShore = remember { Scaled() }
-    val mirrorRoad = remember { Retouched() }
-    val backdrop = remember { Baked() }
-    val scaledCar = remember { Scaled() }
-    val scaledCarBraking = remember { Scaled() }
-    val headlights = if (night) ImageBitmap.imageResource(R.drawable.car_headlights) else null
-    val scaledHeadlights = remember { Scaled() }
+    val view = LocalView.current
+    var refreshHz by remember(view) { mutableFloatStateOf(view.display?.refreshRate ?: 60f) }
+    DisposableEffect(view) {
+        val manager = view.context.getSystemService(DisplayManager::class.java)
+        val listener = object : DisplayManager.DisplayListener {
+            override fun onDisplayAdded(displayId: Int) = Unit
+            override fun onDisplayRemoved(displayId: Int) = Unit
+            override fun onDisplayChanged(displayId: Int) {
+                if (displayId == view.display?.displayId) refreshHz = view.display?.refreshRate ?: 60f
+            }
+        }
+        manager.registerDisplayListener(listener, Handler(Looper.getMainLooper()))
+        onDispose { manager.unregisterDisplayListener(listener) }
+    }
+    val resources = LocalContext.current.resources
+    var sceneSize by remember { mutableStateOf(IntSize.Zero) }
+    // Only final render assets survive preparation; decoded originals and intermediate roads
+    // become collectible. Keep the previous scene visible until its replacement is ready.
+    val pictures by produceState<ScenePictures?>(null, resources, night, sceneSize, focusFraction, energySaving) {
+        if (sceneSize.width > 0 && sceneSize.height > 0) {
+            value = withContext(Dispatchers.Default) {
+                prepareScene(resources, night, sceneSize, focusFraction, energySaving)
+            }
+        }
+    }
 
-    LaunchedEffect(moving, covered) {
+    LaunchedEffect(moving, covered, energySaving, refreshHz) {
         // Out of sight nothing needs drawing: the scene keeps its last frame and picks up from it when shown again.
         if (covered) return@LaunchedEffect
         var last = withFrameNanos { it }
+        val cadence = FrameCadence(refreshHz, if (energySaving) 30 else 60)
         while (moving || speed.kmh > REST_KMH) {
             val now = withFrameNanos { it }
-            if (now - last < MIN_FRAME_NANOS) continue // at most 60 frames a second, also on a faster display
+            if (!cadence.shouldDraw()) continue
             val seconds = ((now - last) / 1_000_000_000f).coerceAtMost(MAX_FRAME_SECONDS)
             last = now
             speed.follow(if (moving) target() else 0f, seconds, if (quick) OBD_OMEGA else GPS_OMEGA)
@@ -180,6 +202,7 @@ fun CivicScene(
             roll = suspension.roll
             lanePhase = (suspension.distance % DASH_PERIOD_M).toFloat()
             laneSpeedKmh = speed.kmh
+            laneFrameSeconds = seconds
             braking = suspension.braking
         }
         // Come to a stop: the body at rest, and no more frames.
@@ -194,76 +217,37 @@ fun CivicScene(
     Spacer(
         modifier
             // Its own layer, so the gauges and clock beside it redrawing do not make it record its drawing again.
+            .onSizeChanged { sceneSize = it }
             .graphicsLayer()
             .drawWithCache {
-                val frame = SceneFrame(size.width, size.height, size.width * focusFraction)
-                val lanes = LaneMarkings(frame.scale, roadKind.lane, frame.laneMiddle, frame.laneHalfWidth)
-                fun scaled(cache: Scaled, picture: ImageBitmap, scale: Float) = cache.get(
-                    picture,
-                    ceil(picture.width * scale).toInt().coerceAtLeast(1),
-                    ceil(picture.height * scale).toInt().coerceAtLeast(1),
-                )
-                val roadPicture = scaled(scaledRoad, road, frame.scale)
-                // What is mirrored is the road without the bridge, so it is not seen a second time beside the first.
-                val mirrorPicture = if (frame.mirrored) {
-                    mirrorRoad.get(roadPicture, scaled(scaledShore, shore, frame.scale), SHORE_AT * frame.scale)
-                } else {
-                    null
-                }
-                val seam = mirrorPicture?.let { seamPatch.get(it) }
-                val sky = roadKind.skyTop
-                val at = Offset(frame.left, frame.top)
-                // All that stands still, drawn once: the road, and past its right edge its mirror image without the bridge, the seam patched over.
-                val still = backdrop.get(listOf(roadPicture, mirrorPicture, seam, frame.left, frame.top), size.width.toInt(), size.height.toInt()) {
-                    if (frame.top > 0f) drawRect(0f, 0f, size.width, frame.top + 1f, Paint().apply { color = sky })
-                    drawImage(roadPicture, at, Paint())
-                    if (mirrorPicture != null) {
-                        save()
-                        translate(frame.mirrorAt, 0f)
-                        scale(-1f, 1f)
-                        translate(-frame.mirrorAt, 0f)
-                        drawImage(mirrorPicture, at, Paint())
-                        restore()
-                        seam?.let { drawImage(it, Offset(frame.mirrorAt - it.width / 2, frame.top), Paint()) }
-                    }
-                }
-                // The blur, of the road alone: from the horizon down, and only across the car's part of the scene, since
-                // past it the road is under the car's data.
-                val blurFrom = (-frame.left).toInt()
-                val roadBlurred = blurredRoad.get(
-                    roadPicture,
-                    centre = Offset(ROAD_MIDDLE, ROAD_HORIZON) * frame.scale,
-                    fromX = blurFrom,
-                    toX = (min(frame.mirrorAt, frame.focusRight) - frame.left).toInt(),
-                )
-                val blurAt = Offset(frame.left + blurFrom, frame.top + (ROAD_HORIZON * frame.scale).toInt())
-                val carPicture = scaled(scaledCar, car, frame.carScale)
-                val brakingPicture = scaled(scaledCarBraking, carBraking, frame.carScale)
-                val headlightsPicture = headlights?.let { scaled(scaledHeadlights, it, frame.carScale) }
-                val headlightsAt = frame.carAt + HEADLIGHTS_AT * frame.carScale
-                // The car's shadow on the road: a soft one the width of the car, and a darker one close under it where
-                // the tyres meet the road. Less of it at night, with no sun to cast it.
-                val shadowCentre = frame.pivot
+                val p = pictures
+                val frame = p?.frame
+                val lanes = frame?.let { LaneMarkings(it.scale, p.roadKind.lane, it.laneMiddle, it.laneHalfWidth) }
+                val shadowCentre = frame?.pivot ?: Offset.Zero
                 val shade = if (night) 0.7f else 1f
                 val softShadow = Brush.radialGradient(
                     0f to Color.Black.copy(alpha = 0.65f * shade), 0.6f to Color.Black.copy(alpha = 0.4f * shade), 1f to Color.Transparent,
-                    center = shadowCentre, radius = frame.carWidth * 0.62f,
+                    center = shadowCentre, radius = (frame?.carWidth ?: 1f) * 0.62f,
                 )
                 val contactShadow = Brush.radialGradient(
                     0f to Color.Black.copy(alpha = 0.9f * shade), 0.75f to Color.Black.copy(alpha = 0.65f * shade), 1f to Color.Transparent,
-                    center = shadowCentre, radius = frame.carWidth * 0.5f,
+                    center = shadowCentre, radius = (frame?.carWidth ?: 1f) * 0.5f,
                 )
 
                 onDrawBehind {
-                    drawImage(still)
+                    if (p == null || frame == null || lanes == null) {
+                        drawRect(if (night) NightRoad.skyTop else DayRoad.skyTop)
+                        return@onDrawBehind
+                    }
+                    drawImage(p.still)
                     // The road rushing by, blurred out from the horizon, more of it the faster the car goes.
                     val blur = (laneSpeedKmh / FULL_BLUR_KMH).coerceIn(0f, 1f) * MOST_BLUR
                     // Fainter than the eye can see it is not worth blending the road over again.
-                    if (blur > LEAST_VISIBLE_BLUR) drawImage(roadBlurred, blurAt, alpha = blur)
+                    if (!energySaving && blur > LEAST_VISIBLE_BLUR) p.roadBlurred?.let { drawImage(it, p.blurAt, alpha = blur) }
                     translate(frame.left, frame.top) {
                         // The lines run on past the sides of the picture; keep their dashes on it.
                         clipRect(right = frame.drawnWidth, bottom = frame.drawnHeight) {
-                            with(lanes) { drawDashes(lanePhase, laneSpeedKmh / 3.6f) }
+                            with(lanes) { drawDashes(lanePhase, laneSpeedKmh / 3.6f, laneFrameSeconds) }
                         }
                     }
                     // The shadow stays on the road while the body moves on its springs above it.
@@ -276,8 +260,11 @@ fun CivicScene(
                     // The body rides on its springs, rising, settling and leaning about the middle of the rear axle.
                     translate(top = bob * frame.carWidth) {
                         rotate(roll, pivot = frame.pivot) {
-                            headlightsPicture?.let { drawImage(it, headlightsAt) }
-                            drawImage(if (braking) brakingPicture else carPicture, frame.carAt)
+                            p.headlights?.let { drawImage(it, p.headlightsAt) }
+                            // Better filtering only for the small rotating car, not the full background.
+                            val car = if (braking) p.braking else p.car
+                            drawImage(car, dstOffset = androidx.compose.ui.unit.IntOffset(frame.carAt.x.toInt(), frame.carAt.y.toInt()),
+                                dstSize = IntSize(car.width, car.height), filterQuality = FilterQuality.Medium)
                         }
                     }
                 }
@@ -285,15 +272,101 @@ fun CivicScene(
     )
 }
 
+private class ScenePictures(
+    val frame: SceneFrame,
+    val roadKind: Road,
+    val still: ImageBitmap,
+    val roadBlurred: ImageBitmap?,
+    val blurAt: Offset,
+    val car: ImageBitmap,
+    val braking: ImageBitmap,
+    val headlights: ImageBitmap?,
+    val headlightsAt: Offset,
+)
+
+/** CPU bitmap preparation runs away from the UI thread; only the finished assets are retained. */
+private fun prepareScene(resources: Resources, night: Boolean, dimensions: IntSize, focusFraction: Float, energySaving: Boolean): ScenePictures {
+    val roadKind = if (night) NightRoad else DayRoad
+    fun load(@DrawableRes id: Int) = ImageBitmap.imageResource(resources, id)
+    val road = load(roadKind.res)
+    val shore = load(roadKind.shore)
+    val car = load(if (night) R.drawable.car_night else R.drawable.car_day)
+    val carBraking = load(if (night) R.drawable.car_brake_night else R.drawable.car_brake_day)
+    val headlights = if (night) load(R.drawable.car_headlights) else null
+    val scaledRoad = Scaled()
+    val blurredRoad = ZoomBlurred()
+    val seamPatch = SeamPatch()
+    val scaledShore = Scaled()
+    val mirrorRoad = Retouched()
+    val backdrop = Baked()
+    val scaledCar = Scaled()
+    val scaledCarBraking = Scaled()
+    val scaledHeadlights = Scaled()
+    val frame = SceneFrame(dimensions.width.toFloat(), dimensions.height.toFloat(), dimensions.width * focusFraction)
+    fun scaled(cache: Scaled, picture: ImageBitmap, scale: Float) = cache.get(
+        picture,
+        ceil(picture.width * scale).toInt().coerceAtLeast(1),
+        ceil(picture.height * scale).toInt().coerceAtLeast(1),
+    )
+    val roadPicture = scaled(scaledRoad, road, frame.scale)
+    // What is mirrored is the road without the bridge, so it is not seen a second time beside the first.
+    val mirrorPicture = if (frame.mirrored) {
+        mirrorRoad.get(roadPicture, scaled(scaledShore, shore, frame.scale), SHORE_AT * frame.scale)
+    } else {
+        null
+    }
+    val seam = mirrorPicture?.let { seamPatch.get(it) }
+    val sky = roadKind.skyTop
+    val at = Offset(frame.left, frame.top)
+    // All that stands still, drawn once: the road, and past its right edge its mirror image without the bridge, the seam patched over.
+    val still = backdrop.get(listOf(roadPicture, mirrorPicture, seam, frame.left, frame.top), dimensions.width, dimensions.height) {
+        if (frame.top > 0f) drawRect(0f, 0f, dimensions.width.toFloat(), frame.top + 1f, Paint().apply { color = sky })
+        drawImage(roadPicture, at, Paint())
+        if (mirrorPicture != null) {
+            save()
+            translate(frame.mirrorAt, 0f)
+            scale(-1f, 1f)
+            translate(-frame.mirrorAt, 0f)
+            drawImage(mirrorPicture, at, Paint())
+            restore()
+            seam?.let { drawImage(it, Offset(frame.mirrorAt - it.width / 2, frame.top), Paint()) }
+        }
+        // Bake the sky shade across the full width: no vertical seam at the panel edge
+        // and no extra gradient blending on each animation frame.
+        val shadeBottom = dimensions.height * 0.38f
+        drawRect(0f, 0f, dimensions.width.toFloat(), shadeBottom, Paint().apply {
+            shader = LinearGradientShader(
+                from = Offset.Zero,
+                to = Offset(0f, shadeBottom),
+                colors = listOf(Color.Black.copy(alpha = if (night) 0.12f else 0.22f), Color.Transparent),
+            )
+        })
+    }
+    // The blur, of the road alone: from the horizon down, and only across the car's part of the scene, since
+    // past it the road is under the car's data.
+    val blurFrom = (-frame.left).toInt()
+    val roadBlurred = if (energySaving) null else blurredRoad.get(
+        roadPicture,
+        centre = Offset(ROAD_MIDDLE, ROAD_HORIZON) * frame.scale,
+        fromX = blurFrom,
+        toX = (min(frame.mirrorAt, frame.focusRight) - frame.left).toInt(),
+    )
+    val blurAt = Offset(frame.left + blurFrom, frame.top + (ROAD_HORIZON * frame.scale).toInt())
+    val carPicture = scaled(scaledCar, car, frame.carScale)
+    val brakingPicture = scaled(scaledCarBraking, carBraking, frame.carScale)
+    val headlightsPicture = headlights?.let { scaled(scaledHeadlights, it, frame.carScale) }
+    val headlightsAt = frame.carAt + HEADLIGHTS_AT * frame.carScale
+
+    return ScenePictures(frame, roadKind, still, roadBlurred, blurAt, carPicture, brakingPicture, headlightsPicture, headlightsAt)
+}
+
 // The road's blur at speed: none standing still, growing to MOST_BLUR of the blurred road over the sharp one at
 // FULL_BLUR_KMH and above.
 private const val FULL_BLUR_KMH = 100f
-private const val MOST_BLUR = 0.8f
+private const val MOST_BLUR = 0.4f
 private const val LEAST_VISIBLE_BLUR = 0.03f
 
-// The animation: at most 60 frames a second, as the road's dashes stutter at 30, and the car counts as at rest below
-// this speed. A frame costs a copy of the still road, the blur over the road and the car, so 60 is within reach.
-private const val MIN_FRAME_NANOS = 15_000_000L
+// Stop drawing at rest; the optional resource-saving mode uses a lower cadence without road blur.
 private const val MAX_FRAME_SECONDS = 0.1f
 private const val REST_KMH = 0.2f
 

@@ -6,7 +6,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -43,7 +42,6 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.lerp
@@ -111,15 +109,15 @@ private val PanelGap = 12.dp
 /** The gap on a short screen, where every row needs the height. */
 private val CompactPanelGap = 8.dp
 
-/** How much of the road shows through a block of the panel: a little, like the dock's glass. */
-private const val GLASS_ALPHA = 0.82f
+/** Opaque cards keep the readings clear against the detailed road without alpha blending. */
+private const val GLASS_ALPHA = 1f
 
 /** A block of the panel: glass of [tint] (the card's colour unless a reading tints it) with an edge of [edge]. */
 @Composable
 private fun Modifier.glass(
     shape: Shape,
     tint: Color = MaterialTheme.colorScheme.surface,
-    edge: Color = MaterialTheme.colorScheme.outlineVariant,
+    edge: Color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
 ) = clip(shape).background(tint.copy(alpha = GLASS_ALPHA)).border(1.dp, edge, shape)
 
 /** How a reading is coloured: normal, worth a look, or wrong. */
@@ -127,16 +125,14 @@ private enum class Tone { Normal, Warn, Danger }
 
 /**
  * The right half of Home, read from the OBD adapter: the car's speed ([speed]: the adapter's, or the GPS's) and the
- * engine speed side by side on two large tiles, each with a bar of lit segments (the engine's up to its red line), then
+ * engine speed side by side on two large tiles, each with an arc (the engine's up to its red line), then
  * the values the driver chose in Settings as tiles, each with its picture and a thin bar of how high it
  * stands, in [homeOrder] (by default coolant beside battery voltage, engine load beside intake air, two to a row; more
- * than four go three to a row, and without the pictures, which would crowd the narrower tiles). The adapter's state is
- * beside the panel's title. Values the car does not report show "--";
+ * than four go three to a row). The adapter's state is beside the speed's label. Values the car does not report show "--";
  * while there is no connection, in place of the tiles the panel says why and, where the user can fix it, offers the
  * way. While the link is only being re-established the last reading stays up, faded.
  *
- * [compact], for a short screen (a head unit at 240 dpi): no title, the adapter's state on the speed's tile instead,
- * tighter gaps, and the tiles without their dials, so the figures keep their room.
+ * [compact], for a short screen (a head unit at 240 dpi), uses tighter gaps and padding so the figures keep their room.
  */
 @Composable
 fun ObdPanel(
@@ -172,7 +168,7 @@ fun ObdPanel(
     val tiles = remember(fields) { fields.filter { it != ObdField.SPEED && it != ObdField.RPM } }
 
     val density = LocalDensity.current
-    // No card of its own: the title and each tile are blocks of glass apart, so the road shows between them.
+    // Separate opaque tiles with the road visible in the gaps.
     BoxWithConstraints(modifier) {
         // Type is sized from the panel height, so it fills the panel on a wide screen and a tall one; with more rows
         // of tiles each is shorter, so the type is smaller.
@@ -186,25 +182,6 @@ fun ObdPanel(
             Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(gap),
         ) {
-            if (!compact) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .glass(RoundedCornerShape(18.dp))
-                        .padding(start = 18.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = stringResource(R.string.obd_title),
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                    ObdStatus(state, Modifier.padding(start = 12.dp))
-                }
-            }
             Row(
                 // With a problem to explain, the dials (with little on them) give up height to the words and the button.
                 Modifier.weight(
@@ -220,7 +197,7 @@ fun ObdPanel(
                     speed,
                     Modifier.weight(1f).fillMaxHeight(),
                     compact = compact,
-                    status = if (compact) ({ ObdStatus(state, Modifier, size = 20.dp) }) else null,
+                    status = { ObdStatus(state, Modifier, size = 20.dp) },
                 )
                 RpmTile(values.rpm, Modifier.weight(1f).fillMaxHeight().alpha(dim), compact)
             }
@@ -240,7 +217,7 @@ fun ObdPanel(
             tileRows.forEach { row ->
                 TileRow(dim, gap) {
                     row.forEach { field ->
-                        FieldTile(field, values.reading(field), tileValueSize, roomy = columns == 2 && !compact, compact = compact)
+                        FieldTile(field, values.reading(field), tileValueSize, compact = compact)
                     }
                     repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                 }
@@ -317,109 +294,57 @@ private fun makeStyle(field: ObdField): FieldStyle = when (field) {
     ObdField.CLEARED_DISTANCE, ObdField.CLEARED_TIME, ObdField.WARM_UPS -> FieldStyle(::whole, { null })
 }
 
-/**
- * One chosen value. On a tile with room ([roomy]: two to a row): its name over the value and unit on the left, and on
- * the right a small dial like the large ones, an arc filled to how high the value stands round the value's picture,
- * all in the tone's colour, so a hot engine shows in the arc, the picture and the figure at once. On a narrow tile
- * (three to a row) there is no room for the dial, and a thin bar under the value says how high it stands instead.
- */
+/** A compact reading: icon and name, a clear value and unit, then a thin level bar. */
 @Composable
-private fun RowScope.FieldTile(field: ObdField, reading: Float?, valueSize: TextUnit, roomy: Boolean, compact: Boolean) {
+private fun RowScope.FieldTile(field: ObdField, reading: Float?, valueSize: TextUnit, compact: Boolean) {
     val style = styleOf(field)
     val tone = reading?.let(style.tone) ?: Tone.Normal
     val colors = MaterialTheme.colorScheme
-    val toneColor = toneColor(tone)
+    val accent = toneColor(tone)
     val fraction = reading?.let(style.fraction)?.coerceIn(0f, 1f)
-    // A count (the warm-ups, say) has no level to show.
     val hasLevel = style.fraction(0f) != null || fraction != null
-    val shape = RoundedCornerShape(18.dp)
-    // A value worth a look tints its whole tile, so it is seen at a glance and not only when its figure is read.
     val warned = reading != null && tone != Tone.Normal
-    Row(
-        Modifier
-            .weight(1f)
-            .fillMaxHeight()
+    Column(
+        Modifier.weight(1f).fillMaxHeight()
             .glass(
-                shape,
-                tint = if (warned) lerp(colors.surface, toneColor, 0.14f) else colors.surface,
-                edge = if (warned) toneColor.copy(alpha = 0.55f) else colors.outlineVariant,
+                RoundedCornerShape(20.dp),
+                tint = if (warned) lerp(colors.surface, accent, 0.10f) else colors.surface,
+                edge = if (warned) accent.copy(alpha = 0.65f) else colors.outlineVariant.copy(alpha = 0.5f),
             )
-            .alpha(if (reading == null) 0.55f else 1f)
-            .padding(start = 16.dp, end = 12.dp, top = if (compact) 6.dp else 10.dp, bottom = if (compact) 6.dp else 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = if (compact) 12.dp else 16.dp, vertical = if (compact) 8.dp else 12.dp),
+        verticalArrangement = Arrangement.SpaceBetween,
     ) {
-        Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            ObdIconImage(field.icon, accent, Modifier.size(if (compact) 16.dp else 18.dp))
             Text(
                 stringResource(field.label),
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.labelLarge,
                 color = colors.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
             )
-            // The unit sits on the value's baseline, as printed figures do.
-            Row {
-                Text(
-                    text = reading?.let(style.text) ?: "--",
-                    style = MaterialTheme.typography.headlineSmall.copy(
-                        fontSize = valueSize, lineHeight = valueSize, fontWeight = FontWeight.Bold, fontFeatureSettings = TabularFigures,
-                    ),
-                    color = if (tone == Tone.Normal) colors.onSurface else toneColor,
-                    maxLines = 1,
-                    modifier = Modifier.alignByBaseline(),
-                )
-                Text(
-                    text = field.unit,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = colors.onSurfaceVariant,
-                    modifier = Modifier.alignByBaseline().padding(start = 4.dp),
-                    maxLines = 1,
-                )
-            }
-            if (!roomy && hasLevel) LevelBar(fraction, toneColor) else Spacer(Modifier.height(0.dp))
         }
-        if (roomy) {
-            LevelRing(
-                fraction = if (hasLevel) fraction ?: 0f else null,
-                color = toneColor,
-                modifier = Modifier.padding(start = 8.dp).fillMaxHeight(0.86f).aspectRatio(1f),
-            ) {
-                ObdIconImage(field.icon, toneColor, Modifier.fillMaxSize(0.42f))
-            }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = reading?.let(style.text) ?: "--",
+                style = MaterialTheme.typography.headlineSmall.copy(
+                    fontSize = valueSize, lineHeight = valueSize, fontWeight = FontWeight.Bold, fontFeatureSettings = TabularFigures,
+                ),
+                color = if (warned) accent else if (reading == null) colors.onSurfaceVariant else colors.onSurface,
+                maxLines = 1,
+                modifier = Modifier.alignByBaseline().weight(1f, fill = false),
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = field.unit,
+                style = MaterialTheme.typography.labelMedium,
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.alignByBaseline().padding(start = 5.dp),
+                maxLines = 1,
+            )
         }
-    }
-}
-
-/**
- * A small dial round [content]: the large dials' open arc, its track faint and filled to [fraction] in [color]; with
- * [fraction] null (a count, with no level) only a faint ring. Drawn, not composed, and only when the reading changes.
- */
-@Composable
-private fun LevelRing(fraction: Float?, color: Color, modifier: Modifier, content: @Composable () -> Unit) {
-    val track = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f)
-    val chip = color.copy(alpha = 0.12f)
-    Box(
-        modifier.drawWithCache {
-            val width = size.minDimension * 0.085f
-            val inset = width / 2f
-            val arcSize = Size(size.width - width, size.height - width)
-            val topLeft = Offset(inset, inset)
-            val line = Stroke(width, cap = StrokeCap.Round)
-            onDrawBehind {
-                // The picture's chip inside the ring, in the tone's colour.
-                drawCircle(chip, radius = size.minDimension / 2f - width * 1.9f)
-                if (fraction == null) {
-                    drawCircle(track, radius = size.minDimension / 2f - inset, style = Stroke(width))
-                } else {
-                    drawArc(track, DIAL_START, DIAL_SWEEP, useCenter = false, topLeft = topLeft, size = arcSize, style = line)
-                    if (fraction > 0f) {
-                        drawArc(color, DIAL_START, DIAL_SWEEP * fraction, useCenter = false, topLeft = topLeft, size = arcSize, style = line)
-                    }
-                }
-            }
-        },
-        contentAlignment = Alignment.Center,
-    ) {
-        content()
+        if (hasLevel) LevelBar(fraction, accent) else Spacer(Modifier.height(3.dp))
     }
 }
 
@@ -427,12 +352,12 @@ private fun LevelRing(fraction: Float?, color: Color, modifier: Modifier, conten
 @Composable
 private fun LevelBar(fraction: Float?, color: Color) {
     val track = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
-    Canvas(Modifier.fillMaxWidth().height(5.dp)) {
+    Canvas(Modifier.fillMaxWidth().height(3.dp)) {
         val radius = CornerRadius(size.height / 2f)
         drawRoundRect(track, cornerRadius = radius)
         if (fraction != null && fraction > 0f) {
             drawRoundRect(
-                Brush.horizontalGradient(listOf(color.copy(alpha = 0.7f), color), endX = size.width * fraction),
+                color,
                 size = Size(size.width * fraction, size.height),
                 cornerRadius = radius,
             )
@@ -563,7 +488,8 @@ private fun GaugeTile(
     ) {
         // The name above the dial, where a short tile still has room for it, clear of the number.
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(label, style = MaterialTheme.typography.titleSmall, color = colors.onSurfaceVariant, maxLines = 1)
+            Text(label, style = MaterialTheme.typography.labelLarge, color = colors.onSurfaceVariant, maxLines = 1,
+                overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             if (badge != null) {
                 Text(
                     badge,
@@ -578,7 +504,6 @@ private fun GaugeTile(
                 )
             }
             if (trailing != null) {
-                Spacer(Modifier.weight(1f))
                 trailing()
             }
         }
@@ -586,10 +511,13 @@ private fun GaugeTile(
             val density = LocalDensity.current
             // As large as the tile lets it: two radii across, one and a half down.
             val radius = minOf(maxWidth / 2f, maxHeight / DIAL_HEIGHT_PER_RADIUS)
-            val stroke = radius * 0.11f
-            // The number fills the dial's middle, smaller for a longer one ("6,500") so it stays inside the arc, and
+            val stroke = radius * if (redFrom != null) 0.075f else 0.095f
+            // The number fills the dial's middle, reserving space for "6,500" or a three-digit speed, and
             // the unit under it in proportion, so the two never run into the arc's ends however small the dial.
-            val valueSize = with(density) { minOf(radius * 0.6f, radius * 1.4f / (value.length.coerceAtLeast(2) * 0.6f)).toSp() }
+            // Reserve room for the maximum reading; changing digits must not resize the type.
+            val valueDigits = if (redFrom != null) 5 else 3
+            val valueScale = if (redFrom == null) 1.15f else 1f
+            val valueSize = with(density) { minOf(radius * 0.6f * valueScale, radius * 1.4f / (valueDigits * 0.6f)).toSp() }
             val unitSize = with(density) { (radius * 0.2f).coerceIn(10.dp, 18.dp).toSp() }
             Box(Modifier.width(radius * 2f).height(radius * DIAL_HEIGHT_PER_RADIUS), contentAlignment = Alignment.Center) {
                 Spacer(

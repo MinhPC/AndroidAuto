@@ -138,6 +138,12 @@ private fun CarSettings(settings: LauncherSettings, viewModel: LauncherViewModel
             RadioRow(settings.theme == ThemeMode.System, stringResource(R.string.theme_system)) { viewModel.setTheme(ThemeMode.System) }
             RadioRow(settings.theme == ThemeMode.Light, stringResource(R.string.theme_light)) { viewModel.setTheme(ThemeMode.Light) }
             RadioRow(settings.theme == ThemeMode.Dark, stringResource(R.string.theme_dark)) { viewModel.setTheme(ThemeMode.Dark) }
+            SwitchRow(
+                settings.energySaving,
+                stringResource(R.string.settings_energy_saving),
+                stringResource(R.string.settings_energy_saving_hint),
+                viewModel::setEnergySaving,
+            )
             Hint(stringResource(R.string.settings_park_hint))
         }
 

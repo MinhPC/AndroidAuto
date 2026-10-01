@@ -152,6 +152,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun setTheme(value: ThemeMode) = settingsStore.setTheme(value)
 
+    fun setEnergySaving(value: Boolean) = settingsStore.setEnergySaving(value)
+
     /** Takes the screen's brightness now as its day brightness, for [ThemeMode.Headlights]. */
     fun relearnDayBrightness() = launcher.headlights.relearn()
 

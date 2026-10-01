@@ -62,6 +62,7 @@ internal fun TileLayout(
     verticalPadding: Dp = 10.dp,
     horizontalPadding: Dp = 6.dp,
     labelGap: Dp = 6.dp,
+    iconOnlyPress: Boolean = false,
     icon: @Composable BoxScope.() -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
@@ -72,9 +73,10 @@ internal fun TileLayout(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
         modifier = modifier
-            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .then(if (iconOnlyPress) Modifier else Modifier.graphicsLayer { scaleX = scale; scaleY = scale })
             .clip(RoundedCornerShape(20.dp))
             .background(container)
+            .background(if (iconOnlyPress && pressed) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else Color.Transparent)
             .then(decoration)
             .combinedClickable(
                 interactionSource = interaction,
@@ -86,7 +88,8 @@ internal fun TileLayout(
             .then(if (showLabel) Modifier else Modifier.semantics { contentDescription = label })
             .padding(horizontal = horizontalPadding, vertical = verticalPadding),
     ) {
-        Box(Modifier.size(iconSize), contentAlignment = Alignment.Center, content = icon)
+        Box(Modifier.size(iconSize).then(if (iconOnlyPress) Modifier.graphicsLayer { scaleX = scale; scaleY = scale } else Modifier),
+            contentAlignment = Alignment.Center, content = icon)
         if (showLabel) Text(
             text = label,
             style = labelStyle ?: if (iconSize >= CompactIcon) MaterialTheme.typography.titleMedium else MaterialTheme.typography.labelLarge,

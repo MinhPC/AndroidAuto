@@ -177,6 +177,7 @@ fun LauncherApp(viewModel: LauncherViewModel) {
             shape = shape,
             covered = pageOpen,
             focusFraction = focusFraction,
+            energySaving = settings.energySaving,
         )
     }
     // Worked out again only when the driver's choice or the installed apps change.

@@ -232,4 +232,6 @@
     <string name="app_dock_remove">Take off the app bar</string>
     <string name="trip_button">Your trip</string>
     <string name="trip_button_running">Trip running</string>
+    <string name="settings_energy_saving">Save resources</string>
+    <string name="settings_energy_saving_hint">Limit motion to 30 frames per second and turn off road motion blur.</string>
 </resources>

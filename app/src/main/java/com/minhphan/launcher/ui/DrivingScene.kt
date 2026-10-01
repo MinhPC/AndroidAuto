@@ -77,7 +77,7 @@ import kotlinx.coroutines.flow.map
 // Android 12+ requires asking for both; only FINE gives the GPS speed we need.
 private val LOCATION_PERMISSIONS = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
 
-private val OverlayShadow = Shadow(color = Color.Black.copy(alpha = 0.6f), offset = Offset(0f, 2f), blurRadius = 8f)
+private val OverlayShadow = Shadow(color = Color.Black.copy(alpha = 0.45f), offset = Offset(0f, 1f), blurRadius = 3f)
 
 /**
  * The Civic seen from behind on an empty road, with the time large in the sky and the date under it, a
@@ -99,6 +99,7 @@ fun DrivingScene(
     shape: Shape = RectangleShape,
     covered: Boolean = false,
     focusFraction: Float = 1f,
+    energySaving: Boolean = false,
 ) {
     val context = LocalContext.current
     var granted by remember { mutableStateOf(hasLocationPermission(context)) }
@@ -151,7 +152,7 @@ fun DrivingScene(
         val density = LocalDensity.current
         fun size(fraction: Float) = with(density) { (h * fraction).toSp() }
         val textColor = Color.White
-        val softColor = Color.White.copy(alpha = 0.8f)
+        val softColor = Color.White.copy(alpha = 0.96f)
 
         CivicScene(
             targetSpeedKmh = targetKmh,
@@ -160,6 +161,7 @@ fun DrivingScene(
             covered = covered,
             modifier = Modifier.fillMaxSize(),
             focusFraction = focusFraction,
+            energySaving = energySaving,
         )
 
         // The time, the GPS dot and the trip button keep to the part of the scene where the car is. The scene runs on

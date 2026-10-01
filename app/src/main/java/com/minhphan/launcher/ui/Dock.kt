@@ -54,17 +54,17 @@ import com.minhphan.launcher.data.MAX_DOCK_APPS
 import kotlin.math.cos
 import kotlin.math.sin
 
-/** The dock: a card of glass as tall as a big touch target (well over the 88 dp the car's buttons want). */
-private val DockHeight = 104.dp
+/** A floating dock with consistent chips and space for large touch targets. */
+private val DockHeight = 92.dp
 private val DockMargin = 12.dp
-private val DockShape = RoundedCornerShape(24.dp)
+private val DockShape = RoundedCornerShape(20.dp)
 
 // On a short screen (a 1024 x 600 or 1280 x 720 head unit at 240 dpi is only 400 to 480 dp tall) the dock gives up
 // height to the car's data above it: still well over the 64 dp a finger needs.
 private val CompactDockHeight = 80.dp
 private val CompactDockMargin = 8.dp
-private val CompactChipSize = 36.dp
-private val CompactChipShape = RoundedCornerShape(12.dp)
+private val CompactChipSize = 40.dp
+private val CompactChipShape = RoundedCornerShape(14.dp)
 
 /** A button narrower than this has no room for its name under its icon, which is then only read out. */
 private val LabelMinWidth = 60.dp
@@ -75,9 +75,9 @@ private val LargeLabelMinWidth = 84.dp
 private const val YOUTUBE_PACKAGE = "com.google.android.youtube"
 
 /** The icon's chip, and the line icon on it. */
-private val ChipSize = 44.dp
+private val ChipSize = 48.dp
 private val ChipShape = RoundedCornerShape(16.dp)
-private val DockIcon = 24.dp
+private val DockIcon = 26.dp
 /** The most buttons the dock has: the driver's apps, then all apps and settings. */
 private const val DOCK_SLOTS = MAX_DOCK_APPS + 2
 
@@ -90,15 +90,15 @@ private val AppsBlue = Color(0xFF5B8CFF)
 private val SettingsGrey = Color(0xFF8E9BAE)
 
 /**
- * The bar along the bottom of Home: a card of glass like the car's data above it. First the buttons the driver chose
+ * The bar along the bottom of Home: an opaque card like the car's data above it. First the buttons the driver chose
  * in Settings ([entries], at most [MAX_DOCK_APPS]): a shortcut (maps, music, YouTube) opens whatever app the head unit
  * has for the job, so it follows what is installed, and says so where there is none; an app opens that app
- * ([onLaunch]). Then, always, all apps and settings. Each is a chip over its name: a shortcut's line icon in its own
+ * ([onLaunch]). Then, separated by a short divider, all apps and settings. Each is a chip over its name: a shortcut's line icon in its own
  * colour on a chip tinted with it, an app's own icon. Home itself is the head unit's Home button, which also closes
  * any page over it.
  *
  * Every button is as wide as when the dock is full, so a dock with fewer is spaced out and its buttons do not grow.
- * Nothing in it moves but the pressed button, so it costs nothing while the car's data and the scene redraw.
+ * Only the pressed icon scales; the label remains sharp and stationary.
  * [compact] makes it lower, for a short screen; a button too narrow for its name shows only its icon.
  */
 @Composable
@@ -117,15 +117,16 @@ fun HomeDock(
             .fillMaxWidth()
             // Clear of the navigation bar, if the head unit shows one, and of the screen's edge.
             .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Bottom))
-            .padding(start = margin, end = margin, bottom = margin)
+            .padding(start = margin, end = margin, top = 4.dp, bottom = margin)
             .height(if (compact) CompactDockHeight else DockHeight)
             .clip(DockShape)
-            // Glass, like the car's data above it, over the scene that runs on under both.
-            .background(colors.surface.copy(alpha = 0.82f))
-            .border(1.dp, colors.outlineVariant, DockShape)
+            // An opaque surface keeps the labels readable without a backdrop blur.
+            .background(colors.surface)
+            .border(1.dp, colors.outlineVariant.copy(alpha = 0.5f), DockShape)
             .padding(horizontal = 6.dp, vertical = if (compact) 4.dp else 6.dp),
     ) {
-        val buttonWidth = maxWidth / DOCK_SLOTS
+        val groupGap = if (compact) 4.dp else 8.dp
+        val buttonWidth = (maxWidth - groupGap * 2 - 1.dp) / DOCK_SLOTS
         val look = DockLook(
             compact = compact,
             buttonWidth = buttonWidth,
@@ -134,10 +135,14 @@ fun HomeDock(
         )
         Row(
             Modifier.fillMaxWidth().fillMaxHeight(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
+            horizontalArrangement = Arrangement.spacedBy(groupGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            entries.forEach { entry -> key(entry.id) { DockEntryButton(entry, look, onLaunch) } }
+            Row(Modifier.weight(1f).fillMaxHeight(), horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically) {
+                entries.forEach { entry -> key(entry.id) { DockEntryButton(entry, look, onLaunch) } }
+            }
+            Box(Modifier.width(1.dp).height(32.dp).background(if (entries.isEmpty()) Color.Transparent else colors.outlineVariant))
             DockButton(stringResource(R.string.dock_apps), look, onClick = onOpenAllApps) { TintedChip(AppsBlue, look) { GridIcon(it) } }
             DockButton(stringResource(R.string.dock_settings), look, onClick = onOpenSettings) { TintedChip(SettingsGrey, look) { GearIcon(it) } }
         }
@@ -176,13 +181,14 @@ private fun DockButton(label: String, look: DockLook, onClick: () -> Unit, chip:
         label = label,
         iconSize = look.chipSize,
         onClick = onClick,
-        labelStyle = labelStyle.copy(fontWeight = FontWeight.Medium),
+        labelStyle = labelStyle.copy(fontWeight = FontWeight.Normal),
         labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
         showLabel = look.showLabels,
-        verticalPadding = if (look.compact) 4.dp else 10.dp,
+        verticalPadding = 4.dp,
         horizontalPadding = if (look.compact) 2.dp else 6.dp,
         labelGap = if (look.compact) 4.dp else 6.dp,
         modifier = Modifier.width(look.buttonWidth).fillMaxHeight(),
+        iconOnlyPress = true,
     ) {
         chip()
     }
@@ -206,7 +212,13 @@ private fun TintedChip(tint: Color, size: Dp, shape: Shape, icon: @Composable (C
 internal fun DockEntryIcon(entry: DockEntry, size: Dp = ChipSize, shape: Shape = ChipShape) {
     when (entry) {
         is DockEntry.Shortcut -> TintedChip(entry.shortcut.tint, size, shape) { ShortcutIcon(entry.shortcut, it) }
-        is DockEntry.App -> Image(bitmap = entry.app.icon, contentDescription = null, modifier = Modifier.size(size))
+        is DockEntry.App -> Box(
+            Modifier.size(size).clip(shape).background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center,
+        ) {
+            Image(bitmap = entry.app.icon, contentDescription = null,
+                modifier = Modifier.size(size - 10.dp).clip(RoundedCornerShape(8.dp)))
+        }
     }
 }
 
