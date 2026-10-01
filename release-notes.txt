@@ -1,1 +1,6 @@
-Sửa mốc "tắt máy" của hiệu chỉnh điện áp ắc quy từ 12.80 xuống 12.78 V, đúng với số đo lại bằng đồng hồ vạn năng.
+Giao diện mới: chiếc Civic trên đường ven sông, theo ngày và đêm, sáng đèn phanh khi giảm tốc, đèn pha ban đêm và nhún theo mặt đường khi xe chạy.
+Thông số động cơ hiển thị thành từng ô kính riêng, trạng thái OBD chỉ còn chấm màu.
+Thiết kế lại thanh ứng dụng và màn hình Tất cả ứng dụng, có thêm mục Hay dùng.
+Thêm ngày âm lịch dưới ngày dương.
+Sửa lỗi màn hình Tất cả ứng dụng chỉ hiện vài ứng dụng trên Android 11 trở lên.
+Ứng dụng nhẹ hơn khoảng 15%.
