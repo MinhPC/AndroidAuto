@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.provider.Settings
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -53,6 +54,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.minhphan.launcher.BuildConfig
 import com.minhphan.launcher.LauncherViewModel
 import com.minhphan.launcher.R
+import com.minhphan.launcher.data.AppInfo
 import com.minhphan.launcher.data.LastLocationStore
 import com.minhphan.launcher.data.LauncherSettings
 import com.minhphan.launcher.data.ThemeMode
@@ -83,8 +85,8 @@ private val TwoColumnWidth = 840.dp
 
 /**
  * Everything the user can change, in cards: the day / night look, the paired OBD adapter and what Home shows from it,
- * the trip sync, and the app version with the update check and window diagnostics. Two columns on a
- * wide screen. Opened from the dock's settings button.
+ * the dock's apps, the trip sync, and the app version with the update check and window diagnostics. Two columns on a
+ * wide screen. Opened from the dock's settings button; adding an app to the dock opens a page to pick it, over this.
  */
 @Composable
 fun SettingsScreen(
@@ -95,10 +97,19 @@ fun SettingsScreen(
     onOpenDiagnostics: () -> Unit,
     onClose: () -> Unit,
 ) {
+    val apps by viewModel.apps.collectAsStateWithLifecycle()
+    var pickingDockApp by rememberSaveable { mutableStateOf(false) }
+    if (pickingDockApp) {
+        BackHandler { pickingDockApp = false }
+        DockAppPicker(settings.dockApps, apps, viewModel, onClose = { pickingDockApp = false })
+        return
+    }
     OverlayScreen(title = stringResource(R.string.settings_title), onClose = onClose) {
         BoxWithConstraints(Modifier.weight(1f)) {
             val car: @Composable () -> Unit = { CarSettings(settings, viewModel, bluetooth) }
-            val app: @Composable () -> Unit = { AppSettings(settings, viewModel, updateState, onOpenDiagnostics) }
+            val app: @Composable () -> Unit = {
+                AppSettings(settings, apps, viewModel, updateState, onOpenDiagnostics, onAddDockApp = { pickingDockApp = true })
+            }
             if (maxWidth >= TwoColumnWidth) {
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                     Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) { car() }
@@ -144,15 +155,21 @@ private fun CarSettings(settings: LauncherSettings, viewModel: LauncherViewModel
     }
 }
 
-/** The account and the app: trip sync, the version with the update check, and diagnostics. */
+/** The dock, the account and the app: the dock's apps, trip sync, the version with the update check, and diagnostics. */
 @Composable
 private fun AppSettings(
     settings: LauncherSettings,
+    apps: List<AppInfo>,
     viewModel: LauncherViewModel,
     updateState: UpdateState,
     onOpenDiagnostics: () -> Unit,
+    onAddDockApp: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        SettingsCard(R.string.settings_dock_title) {
+            DockSettings(settings.dockApps, apps, viewModel, onAddDockApp)
+        }
+
         SettingsCard(R.string.sync_title) {
             TripSyncSettings(settings, viewModel)
         }
@@ -192,8 +209,9 @@ private fun SettingsCard(title: Int, content: @Composable ColumnScope.() -> Unit
     }
 }
 
+/** A line of explanation inside a settings card. */
 @Composable
-private fun Hint(text: String) {
+internal fun Hint(text: String) {
     Text(
         text = text,
         style = MaterialTheme.typography.bodyMedium,

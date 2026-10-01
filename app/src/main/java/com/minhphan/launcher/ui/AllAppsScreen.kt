@@ -73,7 +73,8 @@ private val TileGap = 12.dp
 /**
  * Every launchable app, opened from the dock: first the few launched most here ([usage]), as wide cards that are quick
  * to hit, then every app by name ([apps] must already be in name order). Tap launches (and returns Home); long-press
- * offers the app info. The back button at the top left, as big as the dock's buttons, closes it.
+ * offers the app info, and putting the app on the dock or taking it off ([dockApps], [onDockApp]). The back button at
+ * the top left, as big as the dock's buttons, closes it.
  */
 @Composable
 fun AllAppsScreen(
@@ -81,6 +82,8 @@ fun AllAppsScreen(
     usage: Map<String, Int>,
     onLaunch: (AppInfo) -> Unit,
     onAppInfo: (AppInfo) -> Unit,
+    dockApps: List<String>,
+    onDockApp: (AppInfo, Boolean) -> Unit,
     onClose: () -> Unit,
 ) {
     // The page fills the screen with the theme's own colour, so the status bar icons must contrast with that colour.
@@ -103,7 +106,7 @@ fun AllAppsScreen(
                     item(key = "frequent", span = { GridItemSpan(maxLineSpan) }) {
                         Row(horizontalArrangement = Arrangement.spacedBy(TileGap)) {
                             frequent.forEach { app ->
-                                FrequentCard(app, { onLaunch(app) }, { onAppInfo(app) }, Modifier.weight(1f))
+                                FrequentCard(app, { onLaunch(app) }, { onAppInfo(app) }, app.key in dockApps, { onDockApp(app, it) }, Modifier.weight(1f))
                             }
                             // Empty places keep the cards the same width however few there are.
                             repeat(FREQUENT_COUNT - frequent.size) { Spacer(Modifier.weight(1f)) }
@@ -112,7 +115,7 @@ fun AllAppsScreen(
                 }
                 sectionTitle(R.string.all_apps_by_name, first = frequent.isEmpty())
                 items(apps, key = { it.key }) { app ->
-                    AppCard(app, { onLaunch(app) }, { onAppInfo(app) })
+                    AppCard(app, { onLaunch(app) }, { onAppInfo(app) }, app.key in dockApps, { onDockApp(app, it) })
                 }
             }
         }
@@ -181,11 +184,20 @@ private fun LazyGridScope.sectionTitle(text: Int, first: Boolean) {
 
 /** One of the apps launched most: a wide card, its icon beside its name, tinted in the accent. */
 @Composable
-private fun FrequentCard(app: AppInfo, onLaunch: () -> Unit, onAppInfo: () -> Unit, modifier: Modifier) {
+private fun FrequentCard(
+    app: AppInfo,
+    onLaunch: () -> Unit,
+    onAppInfo: () -> Unit,
+    onDock: Boolean,
+    onDockChange: (Boolean) -> Unit,
+    modifier: Modifier,
+) {
     val colors = MaterialTheme.colorScheme
     PressableCard(
         onClick = onLaunch,
         onAppInfo = onAppInfo,
+        onDock = onDock,
+        onDockChange = onDockChange,
         background = lerp(colors.surface, colors.primary, 0.10f),
         edge = colors.primary.copy(alpha = 0.35f),
         modifier = modifier.height(96.dp),
@@ -209,11 +221,13 @@ private fun FrequentCard(app: AppInfo, onLaunch: () -> Unit, onAppInfo: () -> Un
 
 /** One app in the list by name: its icon over its name, on a card. */
 @Composable
-private fun AppCard(app: AppInfo, onLaunch: () -> Unit, onAppInfo: () -> Unit) {
+private fun AppCard(app: AppInfo, onLaunch: () -> Unit, onAppInfo: () -> Unit, onDock: Boolean, onDockChange: (Boolean) -> Unit) {
     val colors = MaterialTheme.colorScheme
     PressableCard(
         onClick = onLaunch,
         onAppInfo = onAppInfo,
+        onDock = onDock,
+        onDockChange = onDockChange,
         background = colors.surface,
         edge = colors.outlineVariant,
         modifier = Modifier.fillMaxWidth().height(128.dp),
@@ -239,13 +253,16 @@ private fun AppCard(app: AppInfo, onLaunch: () -> Unit, onAppInfo: () -> Unit) {
 
 /**
  * A card that dips slightly while pressed, so a tap is felt even when a slow head unit takes a moment to react.
- * Tap opens the app; long-press offers its app info.
+ * Tap opens the app; long-press offers its app info, and putting it on the dock or taking it off ([onDock] says
+ * whether it is there).
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PressableCard(
     onClick: () -> Unit,
     onAppInfo: () -> Unit,
+    onDock: Boolean,
+    onDockChange: (Boolean) -> Unit,
     background: Color,
     edge: Color,
     modifier: Modifier,
@@ -280,6 +297,10 @@ private fun PressableCard(
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.app_info)) },
                 onClick = { menuOpen = false; onAppInfo() },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(if (onDock) R.string.app_dock_remove else R.string.app_dock_add)) },
+                onClick = { menuOpen = false; onDockChange(!onDock) },
             )
         }
     }

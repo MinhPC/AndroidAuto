@@ -26,6 +26,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -42,6 +44,7 @@ private val CompactIcon = 56.dp
  * An icon with its label under it, the shape of the dock's buttons. It dips slightly while
  * pressed, so a tap is felt even when a slow head unit takes a moment to react. [container] is an optional card
  * colour behind the whole tile, and [decoration] anything more drawn there (a gradient, a border), inside its corners.
+ * Where there is no room for the label ([showLabel] false) it is only read out, for a screen reader.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -55,6 +58,10 @@ internal fun TileLayout(
     decoration: Modifier = Modifier,
     labelStyle: TextStyle? = null,
     labelColor: Color = MaterialTheme.colorScheme.onSurface,
+    showLabel: Boolean = true,
+    verticalPadding: Dp = 10.dp,
+    horizontalPadding: Dp = 6.dp,
+    labelGap: Dp = 6.dp,
     icon: @Composable BoxScope.() -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
@@ -76,17 +83,18 @@ internal fun TileLayout(
                 onLongClick = onLongClick,
             )
             .heightIn(min = MinTouchTarget)
-            .padding(horizontal = 6.dp, vertical = 10.dp),
+            .then(if (showLabel) Modifier else Modifier.semantics { contentDescription = label })
+            .padding(horizontal = horizontalPadding, vertical = verticalPadding),
     ) {
         Box(Modifier.size(iconSize), contentAlignment = Alignment.Center, content = icon)
-        Text(
+        if (showLabel) Text(
             text = label,
             style = labelStyle ?: if (iconSize >= CompactIcon) MaterialTheme.typography.titleMedium else MaterialTheme.typography.labelLarge,
             color = labelColor,
             textAlign = TextAlign.Center,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 6.dp),
+            modifier = Modifier.padding(top = labelGap),
         )
     }
 }

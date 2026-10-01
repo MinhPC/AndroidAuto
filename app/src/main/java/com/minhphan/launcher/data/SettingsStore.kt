@@ -39,6 +39,8 @@ data class LauncherSettings(
     val voltageCalibration: VoltageCalibration = VoltageCalibration(),
     /** The mode 01 PIDs the car said it answers, the last time it said; null until then. */
     val carPids: Set<Int>? = null,
+    /** The dock's buttons before all apps and settings, in order: [DockShortcut] ids and app keys. */
+    val dockApps: List<String> = DEFAULT_DOCK_APPS,
 ) {
     /** The chosen values the car can fill: what Home shows. The others stay saved, in case the car lists them again. */
     val shownObdFields: List<ObdField> get() = obdFields.filter { it in availableFields(carPids) }
@@ -87,6 +89,12 @@ class SettingsStore(context: Context) {
         _settings.value = current.copy(carPids = merged)
     }
 
+    /** The dock's apps, in order; see [LauncherSettings.dockApps]. */
+    fun setDockApps(ids: List<String>) {
+        prefs.edit().putString(KEY_DOCK_APPS, encodeDockApps(ids)).apply()
+        _settings.value = _settings.value.copy(dockApps = ids)
+    }
+
     fun setVoltageCalibration(value: VoltageCalibration) {
         prefs.edit()
             .putBoolean(KEY_VOLT_ON, value.enabled)
@@ -116,6 +124,7 @@ class SettingsStore(context: Context) {
         obdFields = decodeObdFields(prefs.getString(KEY_OBD_FIELDS, null)),
         voltageCalibration = readVoltageCalibration(),
         carPids = decodeCarPids(prefs.getString(KEY_CAR_PIDS, null)),
+        dockApps = decodeDockApps(prefs.getString(KEY_DOCK_APPS, null)),
     )
 
     private companion object {
@@ -124,6 +133,7 @@ class SettingsStore(context: Context) {
         const val KEY_SYNC = "sync_trips"
         const val KEY_OBD_FIELDS = "obd_fields"
         const val KEY_CAR_PIDS = "car_pids"
+        const val KEY_DOCK_APPS = "dock_apps"
         const val KEY_VOLT_ON = "voltage_calibration"
         const val KEY_VOLT_OFF_ADAPTER = "voltage_off_adapter"
         const val KEY_VOLT_OFF_REAL = "voltage_off_real"

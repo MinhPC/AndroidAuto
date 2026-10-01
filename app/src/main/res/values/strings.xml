@@ -210,13 +210,25 @@
     <string name="settings_obd_fields_unknown">Chưa biết xe hỗ trợ thông số nào: kết nối OBD một lần khi bật khóa điện, các thông số xe không có sẽ tự ẩn.</string>
     <string name="settings_obd_fields_hidden">Đã ẩn %1$d thông số xe không hỗ trợ.</string>
     <string name="settings_obd_fields_full">Đã chọn tối đa %1$d thông số, hãy tắt bớt một cái để bật cái khác.</string>
-    <string name="dock_home">Trang chủ</string>
     <string name="dock_maps">Bản đồ</string>
     <string name="dock_music">Âm nhạc</string>
     <string name="dock_youtube">YouTube</string>
     <string name="dock_apps">Ứng dụng</string>
     <string name="dock_settings">Cài đặt</string>
     <string name="dock_no_app">Không tìm thấy ứng dụng cho nút này</string>
+    <string name="settings_dock_title">Thanh ứng dụng</string>
+    <string name="settings_dock_hint">Chọn tối đa %1$d ứng dụng cho thanh dưới trang chủ, trên cùng là bên trái thanh. Nút Ứng dụng và Cài đặt luôn ở cuối thanh.</string>
+    <string name="settings_dock_empty">Chưa có ứng dụng nào trên thanh.</string>
+    <string name="settings_dock_full">Thanh đã đủ %1$d ứng dụng, hãy bỏ bớt một ứng dụng để thêm ứng dụng khác.</string>
+    <string name="settings_dock_add">Thêm ứng dụng</string>
+    <string name="settings_dock_move_up">Chuyển sang trái</string>
+    <string name="settings_dock_move_down">Chuyển sang phải</string>
+    <string name="settings_dock_remove">Bỏ khỏi thanh</string>
+    <string name="settings_dock_pick_title">Thêm vào thanh ứng dụng</string>
+    <string name="settings_dock_pick_shortcuts">Lối tắt (mở ứng dụng mặc định của đầu xe)</string>
+    <string name="settings_dock_pick_apps">Ứng dụng</string>
+    <string name="app_dock_add">Thêm vào thanh ứng dụng</string>
+    <string name="app_dock_remove">Bỏ khỏi thanh ứng dụng</string>
     <string name="trip_button">Hành trình của bạn</string>
     <string name="trip_button_running">Đang đếm hành trình</string>
 </resources>

@@ -211,13 +211,25 @@
     <string name="settings_obd_fields_unknown">Not yet known what the car has: connect OBD once with the ignition on, and the values it lacks are hidden.</string>
     <string name="settings_obd_fields_hidden">Hidden: %1$d values the car does not have.</string>
     <string name="settings_obd_fields_full">The most you can show is %1$d: switch one off to switch another on.</string>
-    <string name="dock_home">Home</string>
     <string name="dock_maps">Maps</string>
     <string name="dock_music">Music</string>
     <string name="dock_youtube">YouTube</string>
     <string name="dock_apps">Apps</string>
     <string name="dock_settings">Settings</string>
     <string name="dock_no_app">No app found for this button</string>
+    <string name="settings_dock_title">App bar</string>
+    <string name="settings_dock_hint">Choose up to %1$d apps for the bar along the bottom of Home; the top one is at its left. Apps and Settings are always at its end.</string>
+    <string name="settings_dock_empty">No apps on the bar yet.</string>
+    <string name="settings_dock_full">The bar holds %1$d apps: take one off to add another.</string>
+    <string name="settings_dock_add">Add an app</string>
+    <string name="settings_dock_move_up">Move left</string>
+    <string name="settings_dock_move_down">Move right</string>
+    <string name="settings_dock_remove">Take off the bar</string>
+    <string name="settings_dock_pick_title">Add to the app bar</string>
+    <string name="settings_dock_pick_shortcuts">Shortcuts (open the head unit\'s default app)</string>
+    <string name="settings_dock_pick_apps">Apps</string>
+    <string name="app_dock_add">Add to the app bar</string>
+    <string name="app_dock_remove">Take off the app bar</string>
     <string name="trip_button">Your trip</string>
     <string name="trip_button_running">Trip running</string>
 </resources>

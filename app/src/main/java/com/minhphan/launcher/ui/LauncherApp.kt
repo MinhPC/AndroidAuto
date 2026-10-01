@@ -1,8 +1,10 @@
 package com.minhphan.launcher.ui
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -25,6 +27,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -43,11 +46,15 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.minhphan.launcher.LauncherViewModel
+import com.minhphan.launcher.R
+import com.minhphan.launcher.data.MAX_DOCK_APPS
+import com.minhphan.launcher.data.resolveDock
 import com.minhphan.launcher.data.CarSpeed
 import com.minhphan.launcher.data.SpeedSource
 import com.minhphan.cloud.AccountState
@@ -149,7 +156,7 @@ fun LauncherApp(viewModel: LauncherViewModel) {
     }
     // The car's speed, worked out by the scene (the adapter's, or the GPS's) and shown on the panel; read only there.
     val carSpeed = remember { mutableStateOf(CarSpeed(0f, SpeedSource.None)) }
-    val obdPanel: @Composable (Modifier) -> Unit = { modifier ->
+    val obdPanel: @Composable (Modifier, Boolean) -> Unit = { modifier, compact ->
         ObdPanel(
             obd = viewModel.obd,
             speed = { carSpeed.value },
@@ -157,6 +164,7 @@ fun LauncherApp(viewModel: LauncherViewModel) {
             bluetooth = bluetooth,
             onOpenSettings = { showSettings = true },
             modifier = modifier,
+            compact = compact,
         )
     }
     val scene: @Composable (Modifier, Shape, Float) -> Unit = { modifier, shape, focusFraction ->
@@ -171,9 +179,13 @@ fun LauncherApp(viewModel: LauncherViewModel) {
             focusFraction = focusFraction,
         )
     }
-    val dock: @Composable () -> Unit = {
+    // Worked out again only when the driver's choice or the installed apps change.
+    val dockEntries = remember(settings.dockApps, apps) { resolveDock(settings.dockApps, apps) }
+    val dock: @Composable (Boolean) -> Unit = { compact ->
         HomeDock(
-            onHome = viewModel::onHomePressed,
+            entries = dockEntries,
+            onLaunch = viewModel::launch,
+            compact = compact,
             onOpenAllApps = { showAllApps = true },
             onOpenSettings = { showSettings = true },
         )
@@ -196,6 +208,12 @@ fun LauncherApp(viewModel: LauncherViewModel) {
                     .graphicsLayer { alpha = if (homeHidden) 0f else 1f }
                     .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
             ) {
+                // A head unit at 240 dpi (1024 x 600, 1280 x 720) leaves only 400 to 480 dp under the status bar: the
+                // panel and the dock then give up their spare height, so the figures keep theirs. What is left is also
+                // above the navigation bar, if the head unit shows one along the bottom: the dock keeps clear of it.
+                val navigationBar = with(LocalDensity.current) { WindowInsets.navigationBars.getBottom(this).toDp() }
+                val compact = maxHeight - navigationBar < CompactBelow
+                val margin = if (compact) CompactPageMargin else PageMargin
                 if (maxWidth > maxHeight) {
                     Column(Modifier.fillMaxSize()) {
                         Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -204,14 +222,14 @@ fun LauncherApp(viewModel: LauncherViewModel) {
                                 Spacer(Modifier.weight(SCENE_SHARE))
                                 Column(Modifier.weight(1f - SCENE_SHARE).fillMaxHeight()) {
                                     Column(
-                                        Modifier.weight(1f).fillMaxWidth().padding(PageMargin),
-                                        verticalArrangement = Arrangement.spacedBy(PageMargin),
+                                        Modifier.weight(1f).fillMaxWidth().padding(margin),
+                                        verticalArrangement = Arrangement.spacedBy(margin),
                                     ) {
                                         updateNotice()
                                         homeBanner()
-                                        obdPanel(Modifier.weight(1f).fillMaxWidth())
+                                        obdPanel(Modifier.weight(1f).fillMaxWidth(), compact)
                                     }
-                                    dock()
+                                    dock(compact)
                                 }
                             }
                         }
@@ -220,15 +238,15 @@ fun LauncherApp(viewModel: LauncherViewModel) {
                     // Tall / portrait displays: the scene on top, the car's data below it, the dock under all.
                     Column(Modifier.fillMaxSize()) {
                         Column(
-                            Modifier.weight(1f).fillMaxWidth().padding(PageMargin),
-                            verticalArrangement = Arrangement.spacedBy(PageMargin),
+                            Modifier.weight(1f).fillMaxWidth().padding(margin),
+                            verticalArrangement = Arrangement.spacedBy(margin),
                         ) {
                             scene(Modifier.fillMaxWidth().height(340.dp), RoundedCornerShape(24.dp), 1f)
                             updateNotice()
                             homeBanner()
-                            obdPanel(Modifier.weight(1f).fillMaxWidth())
+                            obdPanel(Modifier.weight(1f).fillMaxWidth(), compact)
                         }
-                        dock()
+                        dock(compact)
                     }
                 }
             }
@@ -240,6 +258,8 @@ fun LauncherApp(viewModel: LauncherViewModel) {
                     usage = usage,
                     onLaunch = { app -> showAllApps = false; viewModel.launch(app) },
                     onAppInfo = viewModel::openAppInfo,
+                    dockApps = settings.dockApps,
+                    onDockApp = { app, on -> if (!viewModel.setDockApp(app.key, on)) sayDockFull(context) },
                     onClose = { showAllApps = false },
                 )
             }
@@ -280,6 +300,11 @@ fun LauncherApp(viewModel: LauncherViewModel) {
     }
 }
 
+/** The dock already has as many apps as it takes. */
+internal fun sayDockFull(context: Context) {
+    Toast.makeText(context, context.getString(R.string.settings_dock_full, MAX_DOCK_APPS), Toast.LENGTH_LONG).show()
+}
+
 private fun UpdateState.needsAttention() =
     this is UpdateState.Available || this is UpdateState.Downloading || this is UpdateState.Installing || this is UpdateState.Failed
 
@@ -288,6 +313,10 @@ private const val PAGE_SETTLED_MS = 320L
 
 /** The margin round the cards on Home, and between them. */
 private val PageMargin = 12.dp
+private val CompactPageMargin = 8.dp
+
+/** Home under this height (between the status bar and the navigation bar) is laid out compact; see [HomeDock] and [ObdPanel]. */
+private val CompactBelow = 520.dp
 
 /** How much of the width, on a landscape screen, is the scene's own: the car's half, left of the card and the dock. */
 private const val SCENE_SHARE = 0.52f

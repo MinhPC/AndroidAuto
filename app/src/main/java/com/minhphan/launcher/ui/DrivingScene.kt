@@ -226,7 +226,10 @@ fun DrivingScene(
 private val GpsRed = Color(0xFFFF4545)
 private val GpsGreen = Color(0xFF34C759)
 
-/** Whether the GPS has a fix: a green dot when it has, red when not, ringed dark so it reads on the road. */
+/**
+ * Whether the GPS has a fix: a green dot when it has, red when not, ringed dark so it reads on the road. Without a fix
+ * the dot blinks for a while ([blinkWhile]), the ring stays.
+ */
 @Composable
 private fun GpsDot(hasFix: Boolean) {
     val description = stringResource(if (hasFix) R.string.gps_signal_ok else R.string.gps_signal_none)
@@ -236,10 +239,10 @@ private fun GpsDot(hasFix: Boolean) {
             .size(14.dp)
             .clip(CircleShape)
             .background(Color.Black.copy(alpha = 0.55f))
-            .padding(2.dp)
-            .clip(CircleShape)
-            .background(if (hasFix) GpsGreen else GpsRed),
-    )
+            .padding(2.dp),
+    ) {
+        Box(Modifier.fillMaxSize().blinkWhile(!hasFix).clip(CircleShape).background(if (hasFix) GpsGreen else GpsRed))
+    }
 }
 
 /**

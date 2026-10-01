@@ -155,12 +155,14 @@ class TripRecorderService : Service() {
             app.obdHub.states.collect { state ->
                 engine = state.toEngine()
                 obdSpeedKmh = state.speedKmh()
+                // Each reading, while GPS is lost in a tunnel, is what the distance there is guessed from.
+                if (lastFixTime > 0) send(tracker.tick(gpsNow(), obdSpeedKmh, engine))
             }
         }
         scope.launch {
             while (true) {
                 delay(TICK_MS)
-                if (lastFixTime > 0) send(tracker.tick(gpsNow(), obdSpeedKmh))
+                if (lastFixTime > 0) send(tracker.tick(gpsNow(), obdSpeedKmh, engine))
             }
         }
         scope.launch {
@@ -220,7 +222,8 @@ class TripRecorderService : Service() {
         private const val TAG = "TripRecorder"
         private const val CHANNEL_ID = "trip_recording"
         private const val NOTIFICATION_ID = 1
-        private const val TICK_MS = 30_000L
+        /** Also between OBD readings, which come only when something changes: a steady speed in a tunnel says nothing new. */
+        private const val TICK_MS = 5_000L
 
         /** How often the trip clock is told whether the car moves. */
         private const val CLOCK_STEP_MS = 2_000L

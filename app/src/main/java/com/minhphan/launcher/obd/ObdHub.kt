@@ -16,9 +16,11 @@ import kotlinx.coroutines.flow.stateIn
 
 /**
  * The one connection to the OBD adapter, shared by the home screen and the trip recorder: an adapter takes only one
- * link at a time. It connects while somebody is collecting [states] and lets go a few seconds after the last one
- * stops, so the adapter is free for other apps; the address and the permission are followed live. Once it has
- * let go the last state is forgotten, so coming back never shows an old reading as if it were live.
+ * link at a time. It is kept for as long as the launcher runs, whoever is looking: while a map or the music is on
+ * screen the engine's readings still go with the trip to the account, coming back to Home shows them at once with no
+ * reconnect (a reset, then several seconds finding the car's protocol), and connecting over and over wedges cheap
+ * adapters. The car switched off does not drop it either (see [obdStates]). The address and the permission are
+ * followed live.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ObdHub(
@@ -39,7 +41,7 @@ class ObdHub(
         .flatMapLatest { (address, granted) -> obdStates(context.applicationContext, address, granted) { extraPids.value } }
         .onEach { state -> (state as? ObdState.Connected)?.values?.supported?.let(onCarPids) }
         .combine(settings.map { it.voltageCalibration }.distinctUntilChanged()) { state, calibration -> state.calibrated(calibration) }
-        .stateIn(scope, SharingStarted.WhileSubscribed(5_000, replayExpirationMillis = 0), ObdState.Connecting())
+        .stateIn(scope, SharingStarted.Eagerly, ObdState.Connecting())
 
     fun setBluetoothGranted(granted: Boolean) {
         bluetoothGranted.value = granted

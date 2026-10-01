@@ -8,6 +8,9 @@ import com.minhphan.launcher.data.AppInfo
 import com.minhphan.launcher.data.AppRepository
 import com.minhphan.launcher.data.LauncherSettings
 import com.minhphan.launcher.data.ScreenLight
+import com.minhphan.launcher.data.movedDockApp
+import com.minhphan.launcher.data.resolveDock
+import com.minhphan.launcher.data.withDockApp
 import com.minhphan.launcher.data.UsageStore
 import com.minhphan.launcher.data.ThemeMode
 import com.minhphan.launcher.diagnostics.DiagnosticLine
@@ -98,6 +101,27 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun setVoltageCalibration(value: VoltageCalibration) = settingsStore.setVoltageCalibration(value)
 
     fun setSyncTrips(value: Boolean) = settingsStore.setSyncTrips(value)
+
+    /**
+     * The dock as the driver sees it: an app no longer installed is left out, so changing the dock drops it for good.
+     * Until the apps are known it is the list as saved.
+     */
+    private fun shownDockApps(): List<String> {
+        val installed = apps.value
+        val ids = settings.value.dockApps
+        return if (installed.isEmpty()) ids else resolveDock(ids, installed).map { it.id }
+    }
+
+    /** Puts [id] (a shortcut or an app) on the dock, at its end, or takes it off; false when the dock is already full. */
+    fun setDockApp(id: String, on: Boolean): Boolean {
+        val next = withDockApp(shownDockApps(), id, on)
+        if (on && id !in next) return false
+        settingsStore.setDockApps(next)
+        return true
+    }
+
+    /** Moves [id] on the dock [by] places, negative towards its start. */
+    fun moveDockApp(id: String, by: Int) = settingsStore.setDockApps(movedDockApp(shownDockApps(), id, by))
 
     fun onHomePressed() {
         _homeEvents.tryEmit(Unit)

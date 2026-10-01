@@ -57,6 +57,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -107,6 +108,9 @@ private const val CATALYST_HOT_C = 950f
  */
 private val PanelGap = 12.dp
 
+/** The gap on a short screen, where every row needs the height. */
+private val CompactPanelGap = 8.dp
+
 /** How much of the road shows through a block of the panel: a little, like the dock's glass. */
 private const val GLASS_ALPHA = 0.82f
 
@@ -130,6 +134,9 @@ private enum class Tone { Normal, Warn, Danger }
  * beside the panel's title. Values the car does not report show "--";
  * while there is no connection, in place of the tiles the panel says why and, where the user can fix it, offers the
  * way. While the link is only being re-established the last reading stays up, faded.
+ *
+ * [compact], for a short screen (a head unit at 240 dpi): no title, the adapter's state on the speed's tile instead,
+ * tighter gaps, and the tiles without their dials, so the figures keep their room.
  */
 @Composable
 fun ObdPanel(
@@ -139,6 +146,7 @@ fun ObdPanel(
     bluetooth: BluetoothPermission,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
 ) {
     // Collected here, not by the caller, so a new reading recomposes only this panel and not the whole home screen.
     val state by obd.collectAsStateWithLifecycle()
@@ -172,41 +180,57 @@ fun ObdPanel(
         val rows = (tiles.size + columns - 1) / columns
         val tileRows = remember(tiles, columns) { homeOrder(tiles).chunked(columns) }
         val tileValueSize = with(density) { (maxHeight * (if (rows > 2) 0.052f else 0.068f)).toSp() }
+        val gap = if (compact) CompactPanelGap else PanelGap
 
         Column(
             Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(PanelGap),
+            verticalArrangement = Arrangement.spacedBy(gap),
         ) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .glass(RoundedCornerShape(18.dp))
-                    .padding(start = 18.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(R.string.obd_title),
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                ObdStatus(state, Modifier.padding(start = 12.dp))
+            if (!compact) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .glass(RoundedCornerShape(18.dp))
+                        .padding(start = 18.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = stringResource(R.string.obd_title),
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    ObdStatus(state, Modifier.padding(start = 12.dp))
+                }
             }
             Row(
-                Modifier.weight(if (rows > 2) 1.5f else 1.9f).fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(PanelGap),
+                // With a problem to explain, the dials (with little on them) give up height to the words and the button.
+                Modifier.weight(
+                    when {
+                        problem != null -> if (compact) 0.8f else 1f
+                        rows > 2 -> 1.5f
+                        else -> 1.9f
+                    },
+                ).fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(gap),
             ) {
-                SpeedTile(speed, Modifier.weight(1f).fillMaxHeight())
-                RpmTile(values.rpm, Modifier.weight(1f).fillMaxHeight().alpha(dim))
+                SpeedTile(
+                    speed,
+                    Modifier.weight(1f).fillMaxHeight(),
+                    compact = compact,
+                    status = if (compact) ({ ObdStatus(state, Modifier, size = 20.dp) }) else null,
+                )
+                RpmTile(values.rpm, Modifier.weight(1f).fillMaxHeight().alpha(dim), compact)
             }
             if (problem != null) {
                 Recovery(
                     problem,
                     bluetooth,
                     onOpenSettings,
-                    Modifier.weight(1.4f).fillMaxWidth().glass(RoundedCornerShape(20.dp)).padding(16.dp),
+                    Modifier.weight(1.4f).fillMaxWidth().glass(RoundedCornerShape(20.dp)).padding(if (compact) 12.dp else 16.dp),
+                    compact = compact,
                 )
                 return@Column
             }
@@ -214,8 +238,10 @@ fun ObdPanel(
             // The values the driver chose in Settings; an empty place keeps the tiles the same width.
             // Each tile is given its own reading only, so a new reading redraws the tiles whose value changed and no other.
             tileRows.forEach { row ->
-                TileRow(dim) {
-                    row.forEach { field -> FieldTile(field, values.reading(field), tileValueSize, roomy = columns == 2) }
+                TileRow(dim, gap) {
+                    row.forEach { field ->
+                        FieldTile(field, values.reading(field), tileValueSize, roomy = columns == 2 && !compact, compact = compact)
+                    }
                     repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
@@ -298,7 +324,7 @@ private fun makeStyle(field: ObdField): FieldStyle = when (field) {
  * (three to a row) there is no room for the dial, and a thin bar under the value says how high it stands instead.
  */
 @Composable
-private fun RowScope.FieldTile(field: ObdField, reading: Float?, valueSize: TextUnit, roomy: Boolean) {
+private fun RowScope.FieldTile(field: ObdField, reading: Float?, valueSize: TextUnit, roomy: Boolean, compact: Boolean) {
     val style = styleOf(field)
     val tone = reading?.let(style.tone) ?: Tone.Normal
     val colors = MaterialTheme.colorScheme
@@ -319,7 +345,7 @@ private fun RowScope.FieldTile(field: ObdField, reading: Float?, valueSize: Text
                 edge = if (warned) toneColor.copy(alpha = 0.55f) else colors.outlineVariant,
             )
             .alpha(if (reading == null) 0.55f else 1f)
-            .padding(start = 16.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+            .padding(start = 16.dp, end = 12.dp, top = if (compact) 6.dp else 10.dp, bottom = if (compact) 6.dp else 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween) {
@@ -422,11 +448,11 @@ private fun toneColor(tone: Tone) = when (tone) {
 }
 
 /**
- * The adapter's state as a dot in its colour (green connected, amber connecting, red a problem) in a soft ring of it.
- * The state in words is only read out, for a screen reader.
+ * The adapter's state as a dot in its colour (green connected, amber connecting, red a problem) in a soft ring of it,
+ * the dot blinking for a while when not connected. The state in words is only read out, for a screen reader.
  */
 @Composable
-private fun ObdStatus(state: ObdState, modifier: Modifier) {
+private fun ObdStatus(state: ObdState, modifier: Modifier, size: Dp = 28.dp) {
     val (color, text) = when (state) {
         is ObdState.Connected -> StatusGood to R.string.obd_header_connected
         is ObdState.Connecting -> StatusWarn to R.string.obd_header_connecting
@@ -435,19 +461,20 @@ private fun ObdStatus(state: ObdState, modifier: Modifier) {
     val description = stringResource(text)
     Box(
         modifier
-            .size(28.dp)
+            .size(size)
             .clip(CircleShape)
             .background(color.copy(alpha = 0.18f))
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
-        Box(Modifier.size(12.dp).clip(CircleShape).background(color))
+        // Blinks for a while when the link is not up (being made, or a problem), steady once it is.
+        Box(Modifier.size(size * 0.43f).blinkWhile(state !is ObdState.Connected).clip(CircleShape).background(color))
     }
 }
 
 /** The engine speed on its dial, red past the red line. */
 @Composable
-private fun RpmTile(rpm: Int?, modifier: Modifier) {
+private fun RpmTile(rpm: Int?, modifier: Modifier, compact: Boolean) {
     val rpmFormat = remember { NumberFormat.getIntegerInstance() }
     GaugeTile(
         label = stringResource(R.string.obd_rpm),
@@ -457,15 +484,17 @@ private fun RpmTile(rpm: Int?, modifier: Modifier) {
         redFrom = RPM_REDLINE / RPM_MAX,
         danger = rpm != null && rpm >= RPM_REDLINE,
         modifier = modifier,
+        compact = compact,
     )
 }
 
 /**
  * The car's speed on its dial, from the scene: the adapter's, or the GPS's while there is no adapter, which the tile
- * then says. Read here only, so a new speed recomposes this tile and nothing else.
+ * then says. Read here only, so a new speed recomposes this tile and nothing else. [status], where given, sits at the
+ * end of its name: the adapter's state, when the panel has no title for it.
  */
 @Composable
-private fun SpeedTile(speed: () -> CarSpeed, modifier: Modifier) {
+private fun SpeedTile(speed: () -> CarSpeed, modifier: Modifier, compact: Boolean, status: (@Composable () -> Unit)?) {
     val current = speed()
     val known = current.source != SpeedSource.None
     GaugeTile(
@@ -477,6 +506,8 @@ private fun SpeedTile(speed: () -> CarSpeed, modifier: Modifier) {
         redFrom = null,
         danger = false,
         modifier = modifier,
+        compact = compact,
+        trailing = status,
     )
 }
 
@@ -495,7 +526,7 @@ private const val DIAL_SWEEP_MS = 220
 /**
  * A dial tile, as a car's cluster has them: an arc filled to [fraction] in the accent (from [redFrom] on the track is
  * red, and the fill turns red when [danger]), the [value] large in its middle with the [unit] under it, and [label]
- * (and a small [badge]) between the arc's ends.
+ * (and a small [badge]) above it, with [trailing] at the far end of that line.
  *
  * Kept light: the arc is drawn, not composed, and the fill moves in the draw phase only, so its sweep to a new reading
  * redraws the arc and nothing else; small steps do not animate at all, so an idling engine does not keep it drawing.
@@ -510,6 +541,8 @@ private fun GaugeTile(
     danger: Boolean,
     modifier: Modifier,
     badge: String? = null,
+    compact: Boolean = false,
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val colors = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(20.dp)
@@ -526,7 +559,7 @@ private fun GaugeTile(
     Column(
         modifier
             .glass(shape)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+            .padding(horizontal = 14.dp, vertical = if (compact) 6.dp else 10.dp),
     ) {
         // The name above the dial, where a short tile still has room for it, clear of the number.
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -543,6 +576,10 @@ private fun GaugeTile(
                         .background(colors.primary.copy(alpha = 0.14f))
                         .padding(horizontal = 6.dp, vertical = 2.dp),
                 )
+            }
+            if (trailing != null) {
+                Spacer(Modifier.weight(1f))
+                trailing()
             }
         }
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -614,17 +651,26 @@ private fun GaugeTile(
 private const val TabularFigures = "tnum"
 
 @Composable
-private fun ColumnScope.TileRow(alpha: Float, content: @Composable RowScope.() -> Unit) {
+private fun ColumnScope.TileRow(alpha: Float, gap: Dp, content: @Composable RowScope.() -> Unit) {
     Row(
         Modifier.weight(1f).fillMaxWidth().alpha(alpha),
-        horizontalArrangement = Arrangement.spacedBy(PanelGap),
+        horizontalArrangement = Arrangement.spacedBy(gap),
         content = content,
     )
 }
 
-/** Says what is wrong and what the user can do about it: nothing (it is retried), or a button. */
+/**
+ * Says what is wrong and what the user can do about it: nothing (it is retried), or a button. The button always has its
+ * room; the words take what is left, smaller on a [compact] screen, and are cut short rather than push it out.
+ */
 @Composable
-private fun Recovery(problem: ObdProblem, bluetooth: BluetoothPermission, onOpenSettings: () -> Unit, modifier: Modifier) {
+private fun Recovery(
+    problem: ObdProblem,
+    bluetooth: BluetoothPermission,
+    onOpenSettings: () -> Unit,
+    modifier: Modifier,
+    compact: Boolean = false,
+) {
     val hint = when (problem) {
         ObdProblem.NoPermission -> R.string.obd_hint_permission
         ObdProblem.NoAdapter -> R.string.obd_hint_no_adapter
@@ -632,25 +678,30 @@ private fun Recovery(problem: ObdProblem, bluetooth: BluetoothPermission, onOpen
         ObdProblem.BluetoothOff -> R.string.obd_hint_bluetooth_off
         ObdProblem.CannotConnect, ObdProblem.Lost -> R.string.obd_hint_retrying
     }
+    val buttonHeight = if (compact) 56.dp else 64.dp
+    val buttonText = if (compact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium
     Column(
         modifier,
-        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+        verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 16.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
             text = stringResource(hint),
-            style = MaterialTheme.typography.titleLarge,
+            style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
+            overflow = TextOverflow.Ellipsis,
+            // Measured after the button, so a long hint is cut short instead of pushing the button off the card.
+            modifier = Modifier.weight(1f, fill = false),
         )
         when (problem) {
             ObdProblem.NoPermission ->
-                Button(onClick = bluetooth.request, modifier = Modifier.heightIn(min = 64.dp)) {
-                    Text(stringResource(R.string.obd_grant), style = MaterialTheme.typography.titleMedium)
+                Button(onClick = bluetooth.request, modifier = Modifier.heightIn(min = buttonHeight)) {
+                    Text(stringResource(R.string.obd_grant), style = buttonText)
                 }
             ObdProblem.NoAdapter, ObdProblem.CannotConnect ->
-                Button(onClick = onOpenSettings, modifier = Modifier.heightIn(min = 64.dp)) {
-                    Text(stringResource(R.string.obd_open_settings), style = MaterialTheme.typography.titleMedium)
+                Button(onClick = onOpenSettings, modifier = Modifier.heightIn(min = buttonHeight)) {
+                    Text(stringResource(R.string.obd_open_settings), style = buttonText)
                 }
             else -> Unit
         }

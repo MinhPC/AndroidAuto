@@ -292,6 +292,134 @@ class TripTrackerTest {
     }
 
     @Test
+    fun aFixBetweenTwoReadingsAfterATunnelCountsTheStretchSinceTheLastReading() {
+        val tracker = TripTracker(zone)
+        val events = tracker.cruise(minutes = 1).toMutableList() // GPS lost from 60 s
+        events += tracker.tick(t0 + 90_000, obdSpeedKmh = 60f)
+        events += tracker.tick(t0 + 120_000, obdSpeedKmh = 60f)
+        events += tracker.cruise(minutes = 1, fromSecond = 140) // back 20 s after the last reading
+        events += tracker.finish(t0 + 201_000)
+        val trip = events.saves().last()
+        assertEquals(16.6667 * 200 / 1000, trip.distanceKm, 0.03) // 60 km/h all the way, tunnel included
+        assertEquals(200L, trip.movingSeconds)
+    }
+
+    @Test
+    fun theGuessInATunnelFollowsEveryReading() {
+        val tracker = TripTracker(zone)
+        val events = tracker.cruise(minutes = 1).toMutableList() // 1 km, GPS lost from 60 s
+        val tunnel = ArrayList<TripEvent>()
+        for (s in 61L..120L) tunnel += tracker.tick(t0 + s * 1000, obdSpeedKmh = if (s <= 85) 90f else 10f)
+        events += tunnel
+        events += tracker.finish(t0 + 121_000)
+        // 60 to 75 s: no reading counted until GPS is lost (15 s), then that stretch at the mean of 60 and 90;
+        // 75 to 85 s at 90; 85 to 86 s slowing to 10; 86 to 120 s at 10.
+        val expectedKm = 1.0 + 75.0 * 15 / 3600 + 90.0 * 10 / 3600 + 50.0 * 1 / 3600 + 10.0 * 34 / 3600
+        assertEquals(expectedKm, events.saves().last().distanceKm, 0.01)
+        // Fed every second, but sent no more often than before.
+        assertTrue(tunnel.saves().size <= 3)
+    }
+
+    @Test
+    fun anEngineSwitchedOffWithNoGpsEndsTheTripWhereItLastMoved() {
+        val tracker = TripTracker(zone)
+        val events = tracker.cruise(minutes = 1, engine = EngineData(rpm = 2000)).toMutableList()
+        // Down into an underground car park: OBD says 20 km/h every 5 s, then the car stands and the engine goes off.
+        var s = 60L
+        while (s < 120) {
+            s += 5
+            events += tracker.tick(t0 + s * 1000, obdSpeedKmh = 20f, engine = EngineData(rpm = 1500))
+        }
+        while (tracker.driving && s < 600) {
+            s += 5
+            events += tracker.tick(t0 + s * 1000, obdSpeedKmh = 0f, engine = EngineData(rpm = 0))
+        }
+        assertFalse(tracker.driving)
+        assertTrue(s <= 150) // about 20 s after the engine went off, not the 5 minutes of silence
+        val trip = events.saves().last()
+        assertFalse(trip.ongoing)
+        assertEquals(t0 + 125_000, trip.endedAt) // the stretch slowing from 20 to 0 km/h, not the car park entrance
+        assertTrue(trip.movingSeconds <= (trip.endedAt - trip.startedAt) / 1000)
+    }
+
+    @Test
+    fun aCarOutOfALongTunnelIntoAQueueHasNotBeenStanding() {
+        val tracker = TripTracker(zone)
+        tracker.cruise(minutes = 1)
+        var s = 60L
+        while (s < 420) { // six minutes in the tunnel at 60 km/h
+            s += 5
+            tracker.tick(t0 + s * 1000, obdSpeedKmh = 60f)
+        }
+        tracker.onFix(fix(425, 16.6667 * 425, 0f)) // out, and straight into a queue
+        assertTrue(tracker.driving)
+    }
+
+    @Test
+    fun anEcuSilentForAMomentInATunnelIsNotTheEngineSwitchedOff() {
+        val tracker = TripTracker(zone)
+        tracker.cruise(minutes = 1, engine = EngineData(rpm = 2000))
+        var s = 60L
+        while (s < 90) {
+            s++
+            tracker.tick(t0 + s * 1000, obdSpeedKmh = 60f, engine = EngineData(rpm = 2000))
+        }
+        // The adapter reports the car silent for 30 s (no speed, 0 rpm) while it drives on.
+        while (s < 120) {
+            s++
+            tracker.tick(t0 + s * 1000, obdSpeedKmh = null, engine = EngineData(rpm = 0))
+        }
+        assertTrue(tracker.driving)
+    }
+
+    @Test
+    fun aCarStandingWithNoGpsSendsNothingNew() {
+        val tracker = TripTracker(zone)
+        tracker.cruise(minutes = 1, engine = EngineData(rpm = 800))
+        tracker.onFix(fix(61, 16.6667 * 60, 0f), EngineData(rpm = 800)) // stops, then GPS is lost in the car park
+        val standing = ArrayList<TripEvent>()
+        for (s in 62L..300L) standing += tracker.tick(t0 + s * 1000, obdSpeedKmh = 0f, engine = EngineData(rpm = 800))
+        assertTrue(standing.saves().isEmpty())
+    }
+
+    @Test
+    fun aJamInATunnelEndsTheTripOnlyAfterTheIdleLimit() {
+        val tracker = TripTracker(zone)
+        tracker.cruise(minutes = 1, engine = EngineData(rpm = 2000))
+        val events = ArrayList<TripEvent>()
+        var s = 60L
+        while (s < 90) { // on through the tunnel, then the queue
+            s += 5
+            events += tracker.tick(t0 + s * 1000, obdSpeedKmh = 30f, engine = EngineData(rpm = 1500))
+        }
+        while (tracker.driving && s < 3_600) {
+            s += 5
+            events += tracker.tick(t0 + s * 1000, obdSpeedKmh = 0f, engine = EngineData(rpm = 800))
+        }
+        // Not after five minutes of silence: fifteen of standing with the engine running, as with GPS.
+        assertTrue(s >= 90 + 15 * 60)
+        assertEquals(t0 + 95_000, events.saves().last().endedAt) // the stretch slowing from 30 to 0 km/h
+    }
+
+    @Test
+    fun aTripThatEndsJustOutOfATunnelEndsThereNotWhereGpsWasLost() {
+        val tracker = TripTracker(zone)
+        tracker.cruise(minutes = 1)
+        var s = 60L
+        while (s < 120) {
+            s += 5
+            tracker.tick(t0 + s * 1000, obdSpeedKmh = 60f)
+        }
+        val out = fix(125, 16.6667 * 125, 0f) // out of the tunnel, and parked there
+        val events = tracker.onFix(out).toMutableList()
+        for (second in 126L..430L) events += tracker.onFix(fix(second, 16.6667 * 125, 0f))
+        val trip = events.saves().last()
+        assertFalse(trip.ongoing)
+        assertEquals(out.position, trip.end)
+        assertEquals(out.timeMs, trip.endedAt)
+    }
+
+    @Test
     fun aTripAcrossMidnightIsSplitBetweenTheTwoDays() {
         val tracker = TripTracker(zone)
         val start = Instant.parse("2026-09-21T23:55:00Z").toEpochMilli()

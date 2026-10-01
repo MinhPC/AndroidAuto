@@ -75,6 +75,10 @@ users/{uid}/refuels/{id}                  một lần đổ xăng: số lít, s�
   hơn 100 m (xê xe trong bãi) bị bỏ. Đèn đỏ không tách chuyến.
 - **Quãng đường** cộng từ khoảng cách giữa các điểm GPS, bỏ điểm sai số trên 50 m và các bước nhảy quá 250 km/h.
   Chuyến qua nửa đêm được chia km cho hai ngày.
+- **Mất GPS** (hầm, gara ngầm) quá 15 giây mà adapter OBD còn kết nối: quãng đường được ước tính từ từng lần đọc
+  tốc độ OBD, chuyến không bị cắt. Trong đoạn đó không có điểm lộ trình, bản đồ nối thẳng từ cửa vào tới cửa ra.
+  Xe dừng và tắt máy khi vẫn không có GPS thì chuyến kết thúc sau khoảng 20 giây, giờ kết thúc là lúc OBD thấy xe
+  còn chạy lần cuối.
 - **Tổng ngày** được gửi dạng cộng dồn (`FieldValue.increment`) nên xoá dữ liệu app hay dùng hai thiết bị cũng không
   làm mất số km đã có trên server.
 - **Chuyến kết thúc thông minh**: nếu bộ đọc OBD đang kết nối, xe dừng mà động cơ báo 0 vòng/phút (hoặc bộ đọc ngừng
