@@ -1,5 +1,6 @@
-Tự chọn ứng dụng trên thanh dưới trang chủ (tối đa 4) trong Cài đặt → Thanh ứng dụng, hoặc nhấn giữ một ứng dụng trong Tất cả ứng dụng. Bỏ nút Trang chủ.
-Trang chủ gọn hơn trên màn hình 240 dpi (1024×600, 1280×720): thông số không còn bị cắt.
-Chấm GPS và OBD nhấp nháy trong một phút khi mất tín hiệu hoặc mất kết nối.
-Giữ kết nối OBD khi mở bản đồ hay nhạc, quay lại trang chủ có số liệu ngay.
-Ghi hành trình qua hầm chính xác hơn: quãng đường tính theo tốc độ OBD, chuyến không bị cắt khi kẹt xe trong hầm, đỗ dưới hầm gửi xe thì chuyến kết thúc đúng lúc tắt máy.
+Giao diện thông số động cơ gọn hơn: bỏ thanh tiêu đề riêng, đưa trạng thái kết nối vào ô tốc độ; số tốc độ lớn hơn, vòng RPM mảnh hơn.
+Các thông số phụ dùng icon nhỏ, số rõ và thanh mức mảnh; cảnh báo dùng màu nền và viền nhẹ.
+Thanh ứng dụng thấp hơn, icon đồng nhất, tách nhóm Ứng dụng / Cài đặt; khi nhấn chỉ icon thu nhỏ để chữ giữ nguyên độ nét.
+Ngày tháng rõ hơn, bóng đồng hồ nhẹ hơn; giảm độ mờ mặt đường và cải thiện lọc ảnh xe.
+Thêm tùy chọn Tiết kiệm tài nguyên: giới hạn chuyển động tối đa 30 khung hình/giây và tắt hiệu ứng mờ mặt đường.
+Dựng ảnh nền trên luồng nền, giảm giữ bitmap trung gian và đồng bộ nhịp chuyển động với màn hình.
