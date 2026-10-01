@@ -1,6 +1,4 @@
-Giao diện thông số động cơ gọn hơn: bỏ thanh tiêu đề riêng, đưa trạng thái kết nối vào ô tốc độ; số tốc độ lớn hơn, vòng RPM mảnh hơn.
-Các thông số phụ dùng icon nhỏ, số rõ và thanh mức mảnh; cảnh báo dùng màu nền và viền nhẹ.
-Thanh ứng dụng thấp hơn, icon đồng nhất, tách nhóm Ứng dụng / Cài đặt; khi nhấn chỉ icon thu nhỏ để chữ giữ nguyên độ nét.
-Ngày tháng rõ hơn, bóng đồng hồ nhẹ hơn; giảm độ mờ mặt đường và cải thiện lọc ảnh xe.
-Thêm tùy chọn Tiết kiệm tài nguyên: giới hạn chuyển động tối đa 30 khung hình/giây và tắt hiệu ứng mờ mặt đường.
-Dựng ảnh nền trên luồng nền, giảm giữ bitmap trung gian và đồng bộ nhịp chuyển động với màn hình.
+GPS dùng chung một nguồn cho màn hình chính, đồng hồ hành trình và ghi chuyến đi, thay vì mỗi phần bật GPS riêng.
+GPS tự nghỉ khi OBD đã báo tốc độ và không ghi chuyến đi; chấm GPS chuyển sang màu xám thay vì nhấp nháy đỏ.
+Khi đang ghi chuyến đi mà xe đỗ (kể cả đã tắt máy), GPS giảm xuống 30 giây một lần và trở lại ngay khi xe lăn bánh.
+Adapter OBD rớt kết nối thoáng qua không làm GPS phải khởi động lại; xe đang chạy mà ECU ngừng trả lời thì GPS tiếp quản ngay.
