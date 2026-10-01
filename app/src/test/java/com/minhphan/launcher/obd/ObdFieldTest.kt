@@ -13,6 +13,18 @@ class ObdFieldTest {
     }
 
     @Test
+    fun homeLeadsWithTheMockUpsFourAndTheRestFollowInListOrder() {
+        assertEquals(
+            listOf(ObdField.COOLANT, ObdField.VOLTAGE, ObdField.LOAD, ObdField.INTAKE),
+            homeOrder(DEFAULT_OBD_FIELDS),
+        )
+        assertEquals(
+            listOf(ObdField.VOLTAGE, ObdField.INTAKE, ObdField.THROTTLE, ObdField.OIL),
+            homeOrder(listOf(ObdField.OIL, ObdField.INTAKE, ObdField.THROTTLE, ObdField.VOLTAGE)),
+        )
+    }
+
+    @Test
     fun switchingAFieldOffTakesItOut() {
         assertEquals(listOf(ObdField.COOLANT), withField(listOf(ObdField.COOLANT, ObdField.LOAD), ObdField.LOAD, on = false))
         assertEquals(emptyList<ObdField>(), withField(emptyList(), ObdField.LOAD, on = false))

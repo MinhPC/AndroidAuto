@@ -18,6 +18,9 @@ enum class ThemeMode {
     /** Sunrise and sunset at the car's last GPS position. */
     Auto,
 
+    /** The headlights, told by the head unit dimming its screen when they come on ([HeadlightMonitor]). */
+    Headlights,
+
     /** Whatever Android's night mode says (many head units never change it). */
     System,
     Light,
@@ -30,8 +33,6 @@ data class LauncherSettings(
     val obdAddress: String = "",
     /** Record trips and send them to the signed-in account. Does nothing until an account is signed in. */
     val syncTrips: Boolean = true,
-    /** The fuel tank in litres, for the estimate of how far the car can still go. */
-    val tankLiters: Int = DEFAULT_TANK_LITERS,
     /** What the tiles on Home show, in the order of [ObdField]. */
     val obdFields: List<ObdField> = DEFAULT_OBD_FIELDS,
     /** How the adapter's battery voltage is corrected to what a multimeter reads at the battery. */
@@ -44,8 +45,6 @@ data class LauncherSettings(
 }
 
 /** A Honda Civic (8th generation) holds 50 litres. */
-const val DEFAULT_TANK_LITERS = 50
-val TANK_LITERS_RANGE = 20..100
 
 /** Persists [LauncherSettings] next to the dock apps in the "launcher" preferences. */
 class SettingsStore(context: Context) {
@@ -88,12 +87,6 @@ class SettingsStore(context: Context) {
         _settings.value = current.copy(carPids = merged)
     }
 
-    fun setTankLiters(value: Int) {
-        val liters = value.coerceIn(TANK_LITERS_RANGE)
-        prefs.edit().putInt(KEY_TANK, liters).apply()
-        _settings.value = _settings.value.copy(tankLiters = liters)
-    }
-
     fun setVoltageCalibration(value: VoltageCalibration) {
         prefs.edit()
             .putBoolean(KEY_VOLT_ON, value.enabled)
@@ -120,7 +113,6 @@ class SettingsStore(context: Context) {
         theme = enumOrDefault(prefs.getString(KEY_THEME, null), ThemeMode.Auto),
         obdAddress = prefs.getString(KEY_OBD, "").orEmpty(),
         syncTrips = prefs.getBoolean(KEY_SYNC, true),
-        tankLiters = prefs.getInt(KEY_TANK, DEFAULT_TANK_LITERS).coerceIn(TANK_LITERS_RANGE),
         obdFields = decodeObdFields(prefs.getString(KEY_OBD_FIELDS, null)),
         voltageCalibration = readVoltageCalibration(),
         carPids = decodeCarPids(prefs.getString(KEY_CAR_PIDS, null)),
@@ -130,7 +122,6 @@ class SettingsStore(context: Context) {
         const val KEY_THEME = "theme_mode"
         const val KEY_OBD = "obd_address"
         const val KEY_SYNC = "sync_trips"
-        const val KEY_TANK = "tank_liters"
         const val KEY_OBD_FIELDS = "obd_fields"
         const val KEY_CAR_PIDS = "car_pids"
         const val KEY_VOLT_ON = "voltage_calibration"

@@ -119,7 +119,7 @@ fun openAppDetails(context: Context, packageName: String) {
     }
 }
 
-private fun startFirstAvailable(context: Context, vararg intents: Intent): Boolean {
+internal fun startFirstAvailable(context: Context, vararg intents: Intent): Boolean {
     for (intent in intents) {
         try {
             context.startActivity(intent)

@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.provider.Settings
 import android.widget.Toast
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,23 +20,19 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -47,7 +42,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalContext
@@ -59,7 +53,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.minhphan.launcher.BuildConfig
 import com.minhphan.launcher.LauncherViewModel
 import com.minhphan.launcher.R
-import com.minhphan.launcher.data.AppInfo
 import com.minhphan.launcher.data.LastLocationStore
 import com.minhphan.launcher.data.LauncherSettings
 import com.minhphan.launcher.data.ThemeMode
@@ -89,90 +82,48 @@ import kotlin.math.roundToInt
 private val TwoColumnWidth = 840.dp
 
 /**
- * Everything the user can change, in cards: the day / night look, the paired OBD adapter, the app version with the
- * update check and window diagnostics, and which apps sit in the dock. Opened from the dock's settings button.
+ * Everything the user can change, in cards: the day / night look, the paired OBD adapter and what Home shows from it,
+ * the trip sync, and the app version with the update check and window diagnostics. Two columns on a
+ * wide screen. Opened from the dock's settings button.
  */
 @Composable
 fun SettingsScreen(
     settings: LauncherSettings,
-    apps: List<AppInfo>,
-    pinnedKeys: Set<String>,
     viewModel: LauncherViewModel,
     updateState: UpdateState,
     bluetooth: BluetoothPermission,
     onOpenDiagnostics: () -> Unit,
     onClose: () -> Unit,
 ) {
-    val canPinMore = pinnedKeys.size < LauncherViewModel.MAX_FAVORITES
     OverlayScreen(title = stringResource(R.string.settings_title), onClose = onClose) {
         BoxWithConstraints(Modifier.weight(1f)) {
-            val general: @Composable () -> Unit = { GeneralSettings(settings, viewModel, updateState, bluetooth, onOpenDiagnostics) }
+            val car: @Composable () -> Unit = { CarSettings(settings, viewModel, bluetooth) }
+            val app: @Composable () -> Unit = { AppSettings(settings, viewModel, updateState, onOpenDiagnostics) }
             if (maxWidth >= TwoColumnWidth) {
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                    Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) { general() }
-                    LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        dockPicker(apps, pinnedKeys, canPinMore, viewModel::toggleFavorite)
-                    }
+                    Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) { car() }
+                    Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) { app() }
                 }
             } else {
-                LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    item { general() }
-                    dockPicker(apps, pinnedKeys, canPinMore, viewModel::toggleFavorite)
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    car()
+                    app()
                 }
             }
         }
     }
 }
 
-private fun LazyListScope.dockPicker(
-    apps: List<AppInfo>,
-    pinnedKeys: Set<String>,
-    canPinMore: Boolean,
-    onToggle: (AppInfo) -> Unit,
-) {
-    item {
-        Text(
-            text = stringResource(R.string.settings_dock_title, pinnedKeys.size, LauncherViewModel.MAX_FAVORITES),
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(top = 8.dp, bottom = 6.dp, start = 4.dp),
-        )
-    }
-    items(apps, key = { it.key }) { app ->
-        val selected = app.key in pinnedKeys
-        val enabled = selected || canPinMore
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .heightIn(min = 64.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)
-                .clickable(enabled = enabled) { onToggle(app) }
-                .alpha(if (enabled) 1f else 0.4f)
-                .padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Image(bitmap = app.icon, contentDescription = null, modifier = Modifier.size(40.dp))
-            Spacer(Modifier.width(16.dp))
-            Text(app.label, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
-            Checkbox(checked = selected, onCheckedChange = null)
-        }
-    }
-}
-
+/** The look and the car: day / night, the OBD adapter, what Home shows from it and its voltage calibration. */
 @Composable
-private fun GeneralSettings(
-    settings: LauncherSettings,
-    viewModel: LauncherViewModel,
-    updateState: UpdateState,
-    bluetooth: BluetoothPermission,
-    onOpenDiagnostics: () -> Unit,
-) {
+private fun CarSettings(settings: LauncherSettings, viewModel: LauncherViewModel, bluetooth: BluetoothPermission) {
     val context = LocalContext.current
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         SettingsCard(R.string.settings_theme_title) {
             RadioRow(settings.theme == ThemeMode.Auto, stringResource(R.string.theme_auto)) { viewModel.setTheme(ThemeMode.Auto) }
             if (settings.theme == ThemeMode.Auto) Hint(remember(settings.theme) { sunSummary(context) })
+            RadioRow(settings.theme == ThemeMode.Headlights, stringResource(R.string.theme_headlights)) { viewModel.setTheme(ThemeMode.Headlights) }
+            if (settings.theme == ThemeMode.Headlights) HeadlightSettings(viewModel)
             RadioRow(settings.theme == ThemeMode.System, stringResource(R.string.theme_system)) { viewModel.setTheme(ThemeMode.System) }
             RadioRow(settings.theme == ThemeMode.Light, stringResource(R.string.theme_light)) { viewModel.setTheme(ThemeMode.Light) }
             RadioRow(settings.theme == ThemeMode.Dark, stringResource(R.string.theme_dark)) { viewModel.setTheme(ThemeMode.Dark) }
@@ -190,13 +141,20 @@ private fun GeneralSettings(
         SettingsCard(R.string.settings_voltage_title) {
             VoltageCalibrationSettings(settings.voltageCalibration, viewModel)
         }
+    }
+}
 
+/** The account and the app: trip sync, the version with the update check, and diagnostics. */
+@Composable
+private fun AppSettings(
+    settings: LauncherSettings,
+    viewModel: LauncherViewModel,
+    updateState: UpdateState,
+    onOpenDiagnostics: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         SettingsCard(R.string.sync_title) {
             TripSyncSettings(settings, viewModel)
-        }
-
-        SettingsCard(R.string.settings_fuel_title) {
-            TankSize(settings.tankLiters, viewModel::setTankLiters)
         }
 
         SettingsCard(R.string.settings_about_title) {
@@ -244,6 +202,29 @@ private fun Hint(text: String) {
     )
 }
 
+/**
+ * What the headlights mode sees: the screen's brightness now against its day brightness, and so day or night, to be
+ * checked with the lights switched on and off; and the way to take the brightness now as the day brightness.
+ */
+@Composable
+private fun HeadlightSettings(viewModel: LauncherViewModel) {
+    val light by viewModel.screenLight.collectAsStateWithLifecycle()
+    if (light.brightness < 0) {
+        Hint(stringResource(R.string.headlights_unreadable))
+        return
+    }
+    Hint(
+        stringResource(
+            R.string.headlights_state,
+            light.brightness,
+            light.dayLevel,
+            stringResource(if (light.dimmed) R.string.headlights_on else R.string.headlights_off),
+        ),
+    )
+    Hint(stringResource(R.string.headlights_hint))
+    ActionButton(stringResource(R.string.headlights_relearn), viewModel::relearnDayBrightness)
+}
+
 /** A wide button for an action inside a card. */
 @Composable
 private fun ActionButton(label: String, onClick: () -> Unit) {
@@ -271,12 +252,6 @@ private fun RadioRow(selected: Boolean, label: String, onClick: () -> Unit) {
     }
 }
 
-/** The size of the fuel tank, which the estimate of the fuel left counts down from. */
-@Composable
-private fun TankSize(liters: Int, onChange: (Int) -> Unit) {
-    StepperRow(stringResource(R.string.settings_tank_label, liters), { onChange(liters - 1) }, { onChange(liters + 1) })
-    Hint(stringResource(R.string.settings_tank_hint))
-}
 
 /** A value with a minus and a plus button. */
 @Composable

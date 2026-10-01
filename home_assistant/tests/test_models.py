@@ -14,10 +14,8 @@ from custom_components.car_trips.models import (
     parse_trip,
     chunk_midpoint,
     chunk_seqs,
-    fuel_stats,
     google_maps_route_url,
     google_maps_url,
-    parse_refuel,
     route_geojson,
     totals_between,
     totals_from_sums,
@@ -66,7 +64,6 @@ def test_parse_live_reads_the_position_and_engine():
     assert live.engine.rpm == 2100 and live.engine.coolant_c == 88
     assert live.engine.voltage == 14.1 and live.engine.fuel_trim_percent == -3
     assert live.engine.intake_c is None
-    assert live.fuel is None
 
 
 def test_parse_live_needs_a_position_and_a_time():
@@ -154,46 +151,6 @@ def test_totals_between_adds_up_only_the_days_in_the_range():
     assert totals_between([], date(2026, 9, 21), date(2026, 9, 27)).trips == 0
 
 
-def refuel_doc(**over):
-    base = {"_id": "1", "at": 1_000_000_000_000, "liters": 35.0, "amountVnd": 805_000, "full": True}
-    return {**base, **over}
-
-
-def test_parse_refuel_reads_a_fill_up_and_works_out_its_price_and_economy():
-    refuel = parse_refuel(refuel_doc(distanceKm=490.0, litersInPeriod=35.0))
-    assert refuel.at == 1_000_000_000 and refuel.liters == 35.0 and refuel.amount_vnd == 805_000 and refuel.full
-    assert refuel.price_per_liter == 23_000
-    assert refuel.km_per_liter == 14.0
-
-
-def test_a_fill_up_without_a_period_has_no_economy_and_a_broken_one_is_skipped():
-    assert parse_refuel(refuel_doc()).km_per_liter is None
-    assert parse_refuel(refuel_doc(distanceKm=0.0, litersInPeriod=30.0)).km_per_liter is None
-    assert parse_refuel(refuel_doc(liters=0)) is None
-    assert parse_refuel({"_id": "2", "liters": 10.0}) is None
-    assert parse_refuel(None) is None
-
-
-def test_fuel_stats_take_the_average_over_all_the_litres_not_over_the_ratios():
-    newest_first = [
-        parse_refuel(refuel_doc(_id="3", at=3_000_000, distanceKm=490.0, litersInPeriod=35.0, amountVnd=800_000)),
-        parse_refuel(refuel_doc(_id="2", at=2_000_000, distanceKm=390.0, litersInPeriod=30.0, amountVnd=700_000)),
-        parse_refuel(refuel_doc(_id="1", at=1_000_000, amountVnd=900_000)),
-    ]
-    stats = fuel_stats(newest_first, month_start=1_500.0, month_end=4_000.0)
-
-    assert stats.last.id == "3"
-    assert stats.last_economy == 14.0
-    assert round(stats.average_economy, 3) == round(880 / 65, 3)
-    assert stats.month_cost_vnd == 800_000 + 700_000
-
-
-def test_no_fill_ups_means_no_stats_and_no_cost():
-    stats = fuel_stats([], 0.0, 1.0)
-    assert stats.last is None and stats.last_economy is None and stats.average_economy is None
-    assert stats.month_cost_vnd == 0
-
-
 def test_chunk_seqs_are_spread_between_the_first_and_the_last_and_leave_both_out():
     assert chunk_seqs(0, 8) == [] and chunk_seqs(1, 8) == []
     assert chunk_seqs(2, 8) == [1]
@@ -261,12 +218,3 @@ def test_route_geojson_tolerates_a_missing_chunk_and_a_broken_point():
     chunks = [None, {"points": [{"a": 1.0, "o": 2.0}, "x", {"a": 1.1}, {"a": 1.2, "o": 2.2}]}]
     coords = json.loads(route_geojson(chunks, 500))["geometry"]["coordinates"]
     assert coords == [[2.0, 1.0], [2.2, 1.2]]
-
-
-def test_parse_live_reads_the_fuel_estimate_and_ignores_a_broken_one():
-    fuel = parse_live(live_doc(fuel={"liters": 28.4, "rangeKm": 341.0, "percent": 57, "kmPerLiter": 12.0, "assumed": True})).fuel
-    assert (fuel.liters, fuel.range_km, fuel.percent, fuel.km_per_liter, fuel.assumed) == (28.4, 341.0, 57, 12.0, True)
-    assert parse_live(live_doc(fuel={"percent": 57})).fuel is None
-    partial = parse_live(live_doc(fuel={"liters": 28.4, "rangeKm": 341.0})).fuel  # no percent, no economy: unknown, not 0
-    assert partial.percent is None and partial.km_per_liter is None and partial.range_km == 341.0
-    assert parse_live(live_doc(fuel="full")).fuel is None

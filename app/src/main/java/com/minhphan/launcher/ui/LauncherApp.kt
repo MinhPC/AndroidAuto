@@ -12,22 +12,23 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -37,40 +38,52 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.minhphan.launcher.LauncherViewModel
-import com.minhphan.launcher.data.smartOrder
+import com.minhphan.launcher.data.CarSpeed
+import com.minhphan.launcher.data.SpeedSource
 import com.minhphan.cloud.AccountState
 import com.minhphan.launcher.sync.TripRecorderService
 import com.minhphan.launcher.update.UpdateState
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 @Composable
 fun LauncherApp(viewModel: LauncherViewModel) {
     val apps by viewModel.apps.collectAsStateWithLifecycle()
-    val pinned by viewModel.favorites.collectAsStateWithLifecycle()
-    val pinnedKeys = remember(pinned) { pinned.mapTo(HashSet()) { it.key } }
     val usage by viewModel.appUsage.collectAsStateWithLifecycle()
-    // The dock's apps first, then the ones launched most, then the rest by name.
-    val allApps = remember(apps, pinned, usage) { smartOrder(apps, { it.key }, pinned.map { it.key }, usage) }
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val connectivity by viewModel.connectivity.collectAsStateWithLifecycle()
     val connectivityRunning by viewModel.connectivityRunning.collectAsStateWithLifecycle()
     var showDiagnostics by rememberSaveable { mutableStateOf(false) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var showAllApps by rememberSaveable { mutableStateOf(false) }
-    var showRefuel by rememberSaveable { mutableStateOf(false) }
-    val recording by viewModel.recording.collectAsStateWithLifecycle()
-    val fuelBook by viewModel.fuelBook.collectAsStateWithLifecycle()
+    var showTrip by rememberSaveable { mutableStateOf(false) }
+    val tripRunningNow = remember { viewModel.drives.value.current != null }
+    val tripRunning by remember { viewModel.drives.map { it.current != null }.distinctUntilChanged() }
+        .collectAsStateWithLifecycle(initialValue = tripRunningNow)
     val updateState by viewModel.updateState.collectAsStateWithLifecycle()
     val pageOpen = showAllApps || showSettings || showDiagnostics
+    // Once a full-screen page has slid all the way in, Home under it is not drawn at all (a layer with no alpha is
+    // skipped), so the page does not pay for drawing both; it shows again the moment the page starts to close.
+    var homeHidden by remember { mutableStateOf(false) }
+    LaunchedEffect(pageOpen) {
+        if (pageOpen) {
+            delay(PAGE_SETTLED_MS)
+            homeHidden = true
+        } else {
+            homeHidden = false
+        }
+    }
     val bluetooth = rememberBluetoothPermission()
     LaunchedEffect(bluetooth.granted) { viewModel.setBluetoothGranted(bluetooth.granted) }
     // Pressing Home while a page is open goes back to the home screen, like every launcher.
@@ -79,10 +92,12 @@ fun LauncherApp(viewModel: LauncherViewModel) {
             showAllApps = false
             showSettings = false
             showDiagnostics = false
+            showTrip = false
         }
     }
-    // The left half is a dark photo in day and night alike, so the status bar icons stay light on Home.
-    StatusBarIcons(dark = false)
+    // Home draws its own bar along the top and hides Android's (see MainActivity); a swipe down still shows it, over
+    // the page's own colour.
+    StatusBarIcons(dark = !LocalDarkTheme.current)
     val context = LocalContext.current
     val account by viewModel.account.collectAsStateWithLifecycle()
     var locationGranted by remember { mutableStateOf(hasLocationPermission(context)) }
@@ -90,13 +105,15 @@ fun LauncherApp(viewModel: LauncherViewModel) {
         locationGranted = hasLocationPermission(context)
         onPauseOrDispose { }
     }
-    // Trips are recorded, by a service that outlives this screen, whenever they can be sent to an account.
-    val recordTrips = settings.syncTrips && account is AccountState.SignedIn && locationGranted
-    // Android 13+ hides the recorder's notification, which tells the driver that data is being sent, until allowed.
+    // A service that outlives this screen counts the journey's time on the move while one runs, and sends trips to the
+    // account when they can be; it runs only while there is either to do, and is started again when that changes, so it
+    // takes up or drops each.
+    val sendTrips = settings.syncTrips && account is AccountState.SignedIn
+    // Android 13+ hides the recorder's notification, which tells the driver what it does, until allowed.
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     var askedForNotifications by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(recordTrips) {
-        if (!recordTrips) {
+    LaunchedEffect(locationGranted, sendTrips, tripRunning) {
+        if (!locationGranted || !(sendTrips || tripRunning)) {
             TripRecorderService.stop(context)
             return@LaunchedEffect
         }
@@ -130,29 +147,33 @@ fun LauncherApp(viewModel: LauncherViewModel) {
             )
         }
     }
+    // The car's speed, worked out by the scene (the adapter's, or the GPS's) and shown on the panel; read only there.
+    val carSpeed = remember { mutableStateOf(CarSpeed(0f, SpeedSource.None)) }
     val obdPanel: @Composable (Modifier) -> Unit = { modifier ->
         ObdPanel(
             obd = viewModel.obd,
-            trip = viewModel.tripMeter,
-            totalKm = viewModel.totalKm,
-            fuel = viewModel.fuelBook,
-            fuelEstimate = viewModel.fuelEstimate,
+            speed = { carSpeed.value },
             fields = settings.shownObdFields,
-            recording = recording,
             bluetooth = bluetooth,
-            onStartTrip = viewModel::startTrip,
-            onStopTrip = viewModel::stopTrip,
-            onRefuel = { showRefuel = true },
             onOpenSettings = { showSettings = true },
             modifier = modifier,
         )
     }
+    val scene: @Composable (Modifier, Shape, Float) -> Unit = { modifier, shape, focusFraction ->
+        DrivingScene(
+            obd = viewModel.obd,
+            tripRunning = tripRunning,
+            onOpenTrip = { showTrip = true },
+            onSpeed = { carSpeed.value = it },
+            modifier = modifier,
+            shape = shape,
+            covered = pageOpen,
+            focusFraction = focusFraction,
+        )
+    }
     val dock: @Composable () -> Unit = {
-        AppDock(
-            apps = pinned,
-            onLaunch = viewModel::launch,
-            onUnpin = viewModel::toggleFavorite,
-            onAppInfo = viewModel::openAppInfo,
+        HomeDock(
+            onHome = viewModel::onHomePressed,
             onOpenAllApps = { showAllApps = true },
             onOpenSettings = { showSettings = true },
         )
@@ -165,54 +186,49 @@ fun LauncherApp(viewModel: LauncherViewModel) {
         contentColor = MaterialTheme.colorScheme.onBackground,
     ) {
         Box(Modifier.fillMaxSize()) {
-            BoxWithConstraints(Modifier.fillMaxSize()) {
+            // Under Android's status bar, the scene from edge to edge and down to the bottom of the screen, the car in its
+            // left half. Over its right half, the car's data as blocks
+            // of glass inside the page's margin, with the dock under them, so the road runs on under and between them.
+            // The dock keeps clear of the navigation bar itself, so its bar can run on under it.
+            BoxWithConstraints(
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = if (homeHidden) 0f else 1f }
+                    .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
+            ) {
                 if (maxWidth > maxHeight) {
-                    // Landscape car display: the left half is the scene, edge to edge; the right half is the car's data.
-                    Row(Modifier.fillMaxSize()) {
-                        DrivingScene(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight(),
-                            covered = pageOpen,
-                        )
-                        Box(Modifier.weight(1f).fillMaxHeight()) {
-                            Column(
-                                Modifier
-                                    .fillMaxSize()
-                                    .systemBarsPadding()
-                                    .padding(24.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp),
-                            ) {
-                                updateNotice()
-                                homeBanner()
-                                obdPanel(Modifier.weight(1f).fillMaxWidth())
-                                dock()
+                    Column(Modifier.fillMaxSize()) {
+                        Box(Modifier.weight(1f).fillMaxWidth()) {
+                            scene(Modifier.fillMaxSize(), RectangleShape, SCENE_SHARE)
+                            Row(Modifier.fillMaxSize()) {
+                                Spacer(Modifier.weight(SCENE_SHARE))
+                                Column(Modifier.weight(1f - SCENE_SHARE).fillMaxHeight()) {
+                                    Column(
+                                        Modifier.weight(1f).fillMaxWidth().padding(PageMargin),
+                                        verticalArrangement = Arrangement.spacedBy(PageMargin),
+                                    ) {
+                                        updateNotice()
+                                        homeBanner()
+                                        obdPanel(Modifier.weight(1f).fillMaxWidth())
+                                    }
+                                    dock()
+                                }
                             }
-                            StatusBarScrim(Modifier.align(Alignment.TopCenter))
                         }
                     }
                 } else {
-                    // Tall / portrait displays: the scene on top, the car's data below it.
+                    // Tall / portrait displays: the scene on top, the car's data below it, the dock under all.
                     Column(Modifier.fillMaxSize()) {
-                        DrivingScene(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(340.dp + WindowInsets.statusBars.asPaddingValues().calculateTopPadding()),
-                            covered = pageOpen,
-                        )
                         Column(
-                            Modifier
-                                .weight(1f)
-                                .fillMaxWidth()
-                                .navigationBarsPadding()
-                                .padding(24.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            Modifier.weight(1f).fillMaxWidth().padding(PageMargin),
+                            verticalArrangement = Arrangement.spacedBy(PageMargin),
                         ) {
+                            scene(Modifier.fillMaxWidth().height(340.dp), RoundedCornerShape(24.dp), 1f)
                             updateNotice()
                             homeBanner()
                             obdPanel(Modifier.weight(1f).fillMaxWidth())
-                            dock()
                         }
+                        dock()
                     }
                 }
             }
@@ -220,10 +236,9 @@ fun LauncherApp(viewModel: LauncherViewModel) {
             Overlay(showAllApps) {
                 BackHandler { showAllApps = false }
                 AllAppsScreen(
-                    apps = allApps,
-                    pinnedKeys = pinnedKeys,
+                    apps = apps,
+                    usage = usage,
                     onLaunch = { app -> showAllApps = false; viewModel.launch(app) },
-                    onTogglePin = viewModel::toggleFavorite,
                     onAppInfo = viewModel::openAppInfo,
                     onClose = { showAllApps = false },
                 )
@@ -233,8 +248,6 @@ fun LauncherApp(viewModel: LauncherViewModel) {
                 BackHandler { showSettings = false }
                 SettingsScreen(
                     settings = settings,
-                    apps = apps,
-                    pinnedKeys = pinnedKeys,
                     viewModel = viewModel,
                     updateState = updateState,
                     bluetooth = bluetooth,
@@ -243,15 +256,13 @@ fun LauncherApp(viewModel: LauncherViewModel) {
                 )
             }
 
-            if (showRefuel) {
-                RefuelDialog(
-                    book = fuelBook,
-                    suggestedKm = remember { viewModel.suggestedRefuelKm() },
-                    onSave = { liters, amountVnd, full, distanceKm ->
-                        viewModel.recordRefuel(liters, amountVnd, full, distanceKm)
-                        showRefuel = false
-                    },
-                    onDismiss = { showRefuel = false },
+            if (showTrip) {
+                TripSheet(
+                    drives = viewModel.drives,
+                    locationGranted = locationGranted,
+                    onStartDrive = viewModel::startDrive,
+                    onEndDrive = viewModel::endDrive,
+                    onDismiss = { showTrip = false },
                 )
             }
 
@@ -272,6 +283,15 @@ fun LauncherApp(viewModel: LauncherViewModel) {
 private fun UpdateState.needsAttention() =
     this is UpdateState.Available || this is UpdateState.Downloading || this is UpdateState.Installing || this is UpdateState.Failed
 
+/** How long a full-screen page takes to slide in (see [Overlay]), with a little to spare. */
+private const val PAGE_SETTLED_MS = 320L
+
+/** The margin round the cards on Home, and between them. */
+private val PageMargin = 12.dp
+
+/** How much of the width, on a landscape screen, is the scene's own: the car's half, left of the card and the dock. */
+private const val SCENE_SHARE = 0.52f
+
 /** A full-screen page that fades in with a short rise, and out again; nothing is composed while it is hidden. */
 @Composable
 private fun Overlay(visible: Boolean, content: @Composable () -> Unit) {
@@ -282,29 +302,4 @@ private fun Overlay(visible: Boolean, content: @Composable () -> Unit) {
     ) {
         content()
     }
-}
-
-/**
- * A dark fade over the top of the light right half of Home. The status bar icons stay light because the scene on
- * the left is a dark photo, and light icons would vanish on the light background; this puts them on a dark ground
- * that melts into the page below. Not needed at night, when the whole page is dark.
- */
-@Composable
-private fun StatusBarScrim(modifier: Modifier = Modifier) {
-    if (LocalDarkTheme.current) return
-    val inset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val fade = 20.dp
-    val ink = Color(0xFF0D1117)
-    Box(
-        modifier
-            .fillMaxWidth()
-            .height(inset + fade)
-            .background(
-                Brush.verticalGradient(
-                    0f to ink.copy(alpha = 0.78f),
-                    inset.value / (inset + fade).value to ink.copy(alpha = 0.6f),
-                    1f to Color.Transparent,
-                ),
-            ),
-    )
 }

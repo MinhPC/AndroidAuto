@@ -16,23 +16,25 @@ import com.minhphan.launcher.data.ThemeMode
 import com.minhphan.launcher.data.isDaytime
 import java.time.ZoneId
 
-// Three layers of grey-blue: the page (background), the cards on it (surface) and the tiles on the cards
-// (surfaceVariant), with one blue accent. Day and night share the hue so the switch feels like the same car.
+// Three layers of blue-grey: the page (background), the cards on it (surface) and the tiles on the cards
+// (surfaceVariant), with one blue accent. By night the slate navy of the mock-up (measured on it), as an electric car's
+// screen at dusk: white type, the names and units in a pale blue-grey, a sky-blue accent. Day and night share the hue
+// so the switch feels like the same car.
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFF5AA9FF),
-    onPrimary = Color(0xFF002B55),
-    primaryContainer = Color(0xFF163A66),
-    onPrimaryContainer = Color(0xFFD6E8FF),
-    secondaryContainer = Color(0xFF243447),
-    onSecondaryContainer = Color(0xFFDCE6F2),
-    background = Color(0xFF0D1117),
-    onBackground = Color(0xFFE8EAED),
-    surface = Color(0xFF161C24),
-    onSurface = Color(0xFFE8EAED),
-    surfaceVariant = Color(0xFF212A35),
-    onSurfaceVariant = Color(0xFFA9B4C2),
-    outline = Color(0xFF3A4656),
-    outlineVariant = Color(0xFF2A3441),
+    primary = Color(0xFF79C6F7),
+    onPrimary = Color(0xFF002238),
+    primaryContainer = Color(0xFF2B4765),
+    onPrimaryContainer = Color(0xFFDDEEFF),
+    secondaryContainer = Color(0xFF203348),
+    onSecondaryContainer = Color(0xFFDCE8F5),
+    background = Color(0xFF101B27),
+    onBackground = Color(0xFFFFFFFF),
+    surface = Color(0xFF172738),
+    onSurface = Color(0xFFFFFFFF),
+    surfaceVariant = Color(0xFF1A2A3C),
+    onSurfaceVariant = Color(0xFFCCDCEE),
+    outline = Color(0xFF2E4259),
+    outlineVariant = Color(0xFF283D54),
     error = Color(0xFFFF6B6B),
 )
 
@@ -64,14 +66,16 @@ val LocalDarkTheme = compositionLocalOf { false }
 /**
  * Day or night for [mode]. [ThemeMode.Auto] is the sun at the car's last GPS position, re-evaluated every
  * minute; many head units never flip Android's own night mode, so following it alone would stay in daylight.
+ * [ThemeMode.Headlights] is [headlightsOn]: the screen dimmed as the head unit dims it with the lights on.
  */
 @Composable
-fun rememberDarkTheme(mode: ThemeMode): Boolean {
+fun rememberDarkTheme(mode: ThemeMode, headlightsOn: Boolean): Boolean {
     val system = isSystemInDarkTheme()
     val context = LocalContext.current
     val now by rememberNow()
     val locations = remember(context) { LastLocationStore(context) }
     return when (mode) {
+        ThemeMode.Headlights -> headlightsOn
         ThemeMode.System -> system
         ThemeMode.Light -> false
         ThemeMode.Dark -> true

@@ -101,9 +101,9 @@ class ObdProtocolTest {
 
     @Test
     fun theNamesCoverTheOxygenSensorRanges() {
-        assertEquals("Oxygen sensor 1 voltage", obdPidName(0x14))
-        assertEquals("Oxygen sensor 8 lambda", obdPidName(0x2B))
-        assertEquals("Actual engine torque", obdPidName(0x62))
+        assertEquals("Điện áp cảm biến oxy 1", obdPidName(0x14))
+        assertEquals("Lambda cảm biến oxy 8", obdPidName(0x2B))
+        assertEquals("Mô-men thực của động cơ", obdPidName(0x62))
     }
 
     @Test
@@ -129,6 +129,20 @@ class ObdProtocolTest {
     fun truncatedAnswerIsRejected() {
         assertNull(parsePid("41 0C 1A", Pid.Rpm))
         assertNull(parsePid("41 0C 1A ZZ", Pid.Rpm))
+    }
+
+    @Test
+    fun theAnswerIsFoundAmongOtherLinesWhateverTheCaseAndLineBreaks() {
+        assertEquals(60, parsePid("SEARCHING...\r\n41 0d 3c\r\n", Pid.Speed))
+        assertEquals(60, parsePid("7E8 03\n41 0D 3C 00", Pid.Speed)) // bytes after the answer are ignored
+        assertNull(parsePid("41 0C 1A F8", Pid.Speed)) // the answer to another PID
+        assertNull(parsePid("4 1 0 D", Pid.Speed))
+    }
+
+    @Test
+    fun theCommandForAPidIsModeOneAndItsCodeInHex() {
+        assertEquals("010C", Pid.Rpm.command)
+        assertEquals("0163", Pid.ReferenceTorque.command)
     }
 
     @Test

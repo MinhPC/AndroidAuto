@@ -1,5 +1,6 @@
 package com.minhphan.launcher.data
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -33,5 +34,22 @@ class DriveStateTest {
         val results = listOf(6f, 3.5f, 2.4f, 1.9f).map { speed -> nextMoving(moving, speed).also { moving = it } }
         assertTrue(results.take(3).all { it })
         assertFalse(results.last())
+    }
+
+    @Test
+    fun theCarsOwnSpeedWinsOverTheGpsAndTheGpsStandsInWithoutIt() {
+        assertEquals(CarSpeed(63f, SpeedSource.Obd), carSpeed(63, DriveState.Fix(58f)))
+        assertEquals(CarSpeed(0f, SpeedSource.Obd), carSpeed(0, DriveState.Fix(3f))) // parked, the GPS jittering
+        assertEquals(CarSpeed(58f, SpeedSource.Gps), carSpeed(null, DriveState.Fix(58f)))
+        assertEquals(CarSpeed(0f, SpeedSource.None), carSpeed(null, DriveState.NoFix))
+    }
+
+    @Test
+    fun fromTheSpeedometerAnySpeedIsMovingAndZeroIsStopped() {
+        assertTrue(nextMoving(false, CarSpeed(1f, SpeedSource.Obd)))
+        assertFalse(nextMoving(true, CarSpeed(0f, SpeedSource.Obd)))
+        // The GPS still needs its thresholds.
+        assertFalse(nextMoving(false, CarSpeed(3f, SpeedSource.Gps)))
+        assertFalse(nextMoving(true, CarSpeed(0f, SpeedSource.None)))
     }
 }

@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
 import androidx.core.content.ContextCompat
 import com.minhphan.launcher.R
+import com.minhphan.launcher.data.LunarDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -53,12 +54,17 @@ fun rememberNow(): State<LocalDateTime> {
     return now
 }
 
-/** Big time with the weekday and date under it, both centred. The sizes are passed in so the scene can scale them. */
+/**
+ * Big time, in the device's 12- or 24-hour format, with the weekday and date under it ("Thứ tư, 30 tháng 9") and,
+ * smaller still, the lunar date ("Âm lịch 20/8 · Bính Ngọ"), all centred. The sizes are passed in so the scene can scale
+ * them.
+ */
 @Composable
 fun Clock(
     now: LocalDateTime,
     timeSize: TextUnit,
     dateSize: TextUnit,
+    lunarSize: TextUnit,
     modifier: Modifier = Modifier,
     color: Color = Color.Unspecified,
     dateColor: Color = color,
@@ -69,6 +75,9 @@ fun Clock(
     val time = DateTimeFormatter.ofPattern(timePattern, Locale.getDefault()).format(now)
     val weekday = stringArrayResource(R.array.weekdays)[now.dayOfWeek.value - 1]
     val date = DateTimeFormatter.ofPattern(stringResource(R.string.date_pattern), Locale.getDefault()).format(now)
+    // Worked out once a day, not on every minute's tick.
+    val lunar = remember(now.toLocalDate()) { LunarDate.of(now.toLocalDate()) }
+    val lunarMonth = if (lunar.leap) stringResource(R.string.lunar_leap_month, lunar.month) else lunar.month.toString()
 
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
@@ -76,12 +85,21 @@ fun Clock(
             style = MaterialTheme.typography.displayLarge.copy(
                 fontSize = timeSize, lineHeight = timeSize, fontWeight = FontWeight.Bold, color = color, shadow = shadow,
             ),
+            maxLines = 1,
         )
         Text(
             text = stringResource(R.string.date_format, weekday, date),
             style = MaterialTheme.typography.titleMedium.copy(
-                fontSize = dateSize, lineHeight = dateSize, color = dateColor, shadow = shadow,
+                fontSize = dateSize, lineHeight = dateSize * 1.15f, color = dateColor, shadow = shadow,
             ),
+            maxLines = 1,
+        )
+        Text(
+            text = stringResource(R.string.lunar_date, lunar.day, lunarMonth, lunar.yearName),
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontSize = lunarSize, lineHeight = lunarSize * 1.2f, color = dateColor, shadow = shadow,
+            ),
+            maxLines = 1,
         )
     }
 }

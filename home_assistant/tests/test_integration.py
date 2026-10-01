@@ -57,17 +57,8 @@ def trip_fields(**over):
     return {**base, **over}
 
 
-def fill_ups():
-    """Three fill-ups, newest first: the last two measured (14.0 and 13.0 km/L), the first only a starting point."""
-    return [
-        ("r3", {"at": now_ms(2 * 86400), "liters": 35.0, "amountVnd": 805_000, "full": True, "distanceKm": 490.0, "litersInPeriod": 35.0}),
-        ("r2", {"at": now_ms(16 * 86400), "liters": 30.0, "amountVnd": 690_000, "full": True, "distanceKm": 390.0, "litersInPeriod": 30.0}),
-        ("r1", {"at": now_ms(32 * 86400), "liters": 40.0, "amountVnd": 900_000, "full": True}),
-    ]
-
-
-def arrange(aioclient_mock, *, live=None, trip=None, today=None, refuels=(), chunks=None, route_status=200):
-    """Firestore answering as if the car had sent [live], [trip], the day total [today] (None: nothing) and [refuels]."""
+def arrange(aioclient_mock, *, live=None, trip=None, today=None, chunks=None, route_status=200):
+    """Firestore answering as if the car had sent [live], [trip] and the day total [today] (None: nothing)."""
     aioclient_mock.post(TOKEN_URI, json=TOKEN_OK)
     if live is None:
         aioclient_mock.get(f"{USER}/live/car", status=404, json={})
@@ -83,9 +74,6 @@ def arrange(aioclient_mock, *, live=None, trip=None, today=None, refuels=(), chu
     async def query(method, url, data):
         structured = data["structuredQuery"]
         collection = structured["from"][0]["collectionId"]
-        if collection == "refuels":
-            found = [{"document": {"name": f"x/refuels/{name}", **fields(**doc)}} for name, doc in refuels]
-            return AiohttpClientMockResponse(method, url, json=found[: structured["limit"]] or [{"readTime": "t"}])
         return AiohttpClientMockResponse(method, url, json=trips if collection == "trips" else past)
 
     aioclient_mock.post(f"{USER}:runQuery", side_effect=query)
@@ -247,67 +235,6 @@ async def test_the_past_days_are_read_once_an_hour_not_on_every_poll(hass, aiocl
     await entry.runtime_data.async_refresh()
     assert len(days_queries()) == 1
     assert state(hass, "sensor.car_distance_this_year").state == "5100.0"
-
-
-async def test_the_estimated_fuel_left_shows_as_range_litres_and_percent(hass, aioclient_mock, service_account, freezer):
-    fuel = {"liters": 28.4, "rangeKm": 341.2, "percent": 57, "kmPerLiter": 12.0, "assumed": True}
-    arrange(aioclient_mock, live=live_fields(fuel=fuel), trip=trip_fields())
-    await setup(hass, service_account, freezer)
-
-    range_sensor = state(hass, "sensor.car_estimated_fuel_range")
-    assert range_sensor.state == "341"
-    assert range_sensor.attributes["economy_km_per_liter"] == 12.0 and range_sensor.attributes["economy_assumed"] is True
-    assert state(hass, "sensor.car_estimated_fuel_remaining").state == "28.4"
-    assert state(hass, "sensor.car_estimated_fuel_level").state == "57"
-
-
-async def test_without_an_estimate_the_fuel_left_is_unknown(hass, aioclient_mock, service_account, freezer):
-    arrange(aioclient_mock, live=live_fields(), trip=trip_fields())
-    await setup(hass, service_account, freezer)
-
-    assert state(hass, "sensor.car_estimated_fuel_range").state == "unknown"
-    assert state(hass, "sensor.car_estimated_fuel_level").state == "unknown"
-
-
-async def test_the_fuel_book_shows_the_fill_ups(hass, aioclient_mock, service_account, freezer):
-    arrange(aioclient_mock, live=live_fields(), trip=trip_fields(), refuels=fill_ups())
-    await setup(hass, service_account, freezer)
-
-    assert state(hass, "sensor.car_fuel_economy").state == "14.0"
-    assert state(hass, "sensor.car_average_fuel_economy").state == "13.54"
-    assert state(hass, "sensor.car_last_fill_up_litres").state == "35.0"
-    assert state(hass, "sensor.car_last_fill_up_cost").state == "805000"
-    assert state(hass, "sensor.car_last_fill_up_price_per_litre").state == "23000"
-    assert state(hass, "sensor.car_fuel_cost_this_month").state == str(805_000 + 690_000)  # not last month's
-
-
-async def test_without_fill_ups_the_fuel_sensors_are_unknown_and_the_month_costs_nothing(hass, aioclient_mock, service_account, freezer):
-    arrange(aioclient_mock, live=live_fields(), trip=trip_fields())
-    await setup(hass, service_account, freezer)
-
-    assert state(hass, "sensor.car_fuel_economy").state == "unknown"
-    assert state(hass, "sensor.car_last_fill_up_cost").state == "unknown"
-    assert state(hass, "sensor.car_fuel_cost_this_month").state == "0"
-
-
-async def test_all_the_fill_ups_are_read_again_only_when_there_is_a_new_one(hass, aioclient_mock, service_account, freezer):
-    arrange(aioclient_mock, live=live_fields(), trip=trip_fields(), refuels=fill_ups())
-    entry = await setup(hass, service_account, freezer)
-
-    def refuel_queries(limit):
-        return [
-            call
-            for call in aioclient_mock.mock_calls
-            if call[0] == "POST"
-            and str(call[1]).endswith(":runQuery")
-            and call[2]["structuredQuery"]["from"][0]["collectionId"] == "refuels"
-            and call[2]["structuredQuery"]["limit"] == limit
-        ]
-
-    await entry.runtime_data.async_refresh()
-    await entry.runtime_data.async_refresh()
-    assert len(refuel_queries(1)) == 3  # one look at the newest per poll
-    assert len(refuel_queries(20)) == 1  # the whole list only once
 
 
 ROUTE = {

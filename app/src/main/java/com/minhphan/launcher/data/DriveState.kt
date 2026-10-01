@@ -36,6 +36,35 @@ private const val STALE_FIX_MS = 5_000L
 fun nextMoving(wasMoving: Boolean, speedKmh: Float): Boolean =
     if (wasMoving) speedKmh > MOVING_STOP_KMH else speedKmh >= MOVING_START_KMH
 
+/** Where the car's speed on Home comes from. */
+enum class SpeedSource { Obd, Gps, None }
+
+/** The car's speed as Home shows it, and where it came from. */
+data class CarSpeed(val kmh: Float, val source: SpeedSource)
+
+/**
+ * The car's speed for Home: the car's own, from the OBD adapter, whenever it is connected and says it ([obdKmh]):
+ * that is the speedometer's figure, several times a second, and it does not drop out in a tunnel or lag a second
+ * behind as the GPS does. The GPS speed otherwise, and nothing without either.
+ */
+fun carSpeed(obdKmh: Int?, gps: DriveState): CarSpeed = when {
+    obdKmh != null -> CarSpeed(obdKmh.coerceAtLeast(0).toFloat(), SpeedSource.Obd)
+    gps is DriveState.Fix -> CarSpeed(gps.speedKmh, SpeedSource.Gps)
+    else -> CarSpeed(0f, SpeedSource.None)
+}
+
+/**
+ * Whether the car counts as moving at [speed]. The car's own speedometer reads a clean 0 standing still, so from the
+ * OBD adapter any speed is moving; the GPS needs [nextMoving]'s two thresholds against its jitter.
+ */
+fun nextMoving(wasMoving: Boolean, speed: CarSpeed): Boolean = when (speed.source) {
+    SpeedSource.Obd -> speed.kmh >= OBD_MOVING_KMH
+    SpeedSource.Gps -> nextMoving(wasMoving, speed.kmh)
+    SpeedSource.None -> false
+}
+
+private const val OBD_MOVING_KMH = 1f
+
 /** GPS fixes about once a second. The caller must hold ACCESS_FINE_LOCATION; without it the flow just ends. */
 @SuppressLint("MissingPermission")
 internal fun gpsLocations(context: Context): Flow<Location> = callbackFlow {

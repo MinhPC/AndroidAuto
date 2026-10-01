@@ -61,11 +61,19 @@ enum class ObdField(val group: ObdGroup, val pid: Pid?, @StringRes val label: In
 }
 
 /** What Home shows until the driver chooses otherwise. */
-val DEFAULT_OBD_FIELDS = listOf(
-    ObdField.COOLANT, ObdField.INTAKE, ObdField.VOLTAGE, ObdField.LOAD, ObdField.THROTTLE, ObdField.FUEL_TRIM,
-)
+val DEFAULT_OBD_FIELDS = listOf(ObdField.COOLANT, ObdField.INTAKE, ObdField.VOLTAGE, ObdField.LOAD)
 
-/** Three tiles to a row and three rows fill the panel. */
+/** The tiles that lead on Home, in the mock-up's order: two by two, coolant beside the battery, load beside intake air. */
+private val HOME_LEADING = listOf(ObdField.COOLANT, ObdField.VOLTAGE, ObdField.LOAD, ObdField.INTAKE)
+
+/**
+ * [fields] in the order Home shows them: the leading four first, then the rest in the order of the list above. Only
+ * Home is ordered so; Settings and the saved choice keep the list's order.
+ */
+fun homeOrder(fields: List<ObdField>): List<ObdField> =
+    fields.sortedBy { HOME_LEADING.indexOf(it).takeIf { i -> i >= 0 } ?: (HOME_LEADING.size + it.ordinal) }
+
+/** Three tiles to a row and three rows fill the panel under the gauges. */
 const val MAX_OBD_FIELDS = 9
 
 /**

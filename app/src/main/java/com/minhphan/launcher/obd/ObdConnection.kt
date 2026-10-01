@@ -157,21 +157,31 @@ private class BluetoothElmLink(private val socket: BluetoothSocket) : ElmLink {
     private val input = socket.inputStream
     private val output = socket.outputStream
 
+    // Reused from one command to the next: the link is asked several times a second, one command at a time.
+    private val buffer = ByteArray(256)
+    private val text = StringBuilder(64)
+
     override suspend fun send(command: String, timeoutMs: Long): String {
-        while (input.available() > 0) input.read() // whatever is left over from an earlier, timed-out command
+        // Whatever is left over from an earlier, timed-out command.
+        while (input.available() > 0) if (input.read(buffer, 0, minOf(input.available(), buffer.size)) < 0) break
         output.write("$command\r".toByteArray())
         output.flush()
-        val text = StringBuilder()
+        text.setLength(0)
         val deadline = SystemClock.elapsedRealtime() + timeoutMs
         while (true) {
-            if (input.available() > 0) {
-                val byte = input.read()
-                if (byte < 0) throw IOException("The adapter closed the connection")
-                if (byte == PROMPT) return text.toString()
-                text.append(byte.toChar())
+            val ready = input.available()
+            if (ready > 0) {
+                // All that has come in, in one read: each read is a call down into the Bluetooth stack.
+                val count = input.read(buffer, 0, minOf(ready, buffer.size))
+                if (count < 0) throw IOException("The adapter closed the connection")
+                for (i in 0 until count) {
+                    val byte = buffer[i].toInt() and 0xFF
+                    if (byte == PROMPT) return text.toString()
+                    text.append(byte.toChar())
+                }
             } else {
                 if (SystemClock.elapsedRealtime() > deadline) throw IOException("No answer to $command")
-                delay(5)
+                delay(POLL_MS)
             }
         }
     }
@@ -180,6 +190,7 @@ private class BluetoothElmLink(private val socket: BluetoothSocket) : ElmLink {
 
     private companion object {
         const val PROMPT = '>'.code
+        const val POLL_MS = 5L
     }
 }
 
@@ -245,16 +256,26 @@ internal suspend fun readUntilSilent(
     val cooldown = HashMap<Pid, Int>()
     var silentRounds = 0
     var round = 0
+    // The values that are always read, and the others the driver has put on Home; one of them is asked per round.
+    // Worked out again only when the driver's choice changes, not on every round.
+    var extraFor: Set<Pid>? = null
+    var slow: List<Pid> = emptyList()
+    val asked = ArrayList<Pid>(FAST_PIDS.size + 1)
+    val missed = ArrayList<Pid>(FAST_PIDS.size + 1)
     while (true) {
-        cooldown.replaceAll { _, rounds -> rounds - 1 }
-        // The values that are always read, and the others the driver has put on Home; one of them is asked per round.
-        val slow = (SLOW_PIDS + extraPids().filter { it !in SLOW_PIDS && it !in FAST_PIDS })
-            .filter { supported == null || it.code in supported }
-        val asked = (FAST_PIDS + listOfNotNull(slow.getOrNull(round % slow.size.coerceAtLeast(1))))
-            .filter { it !in unsupported && (cooldown[it] ?: 0) <= 0 }
-        val missed = ArrayList<Pid>()
+        if (cooldown.isNotEmpty()) cooldown.replaceAll { _, rounds -> rounds - 1 }
+        val extra = extraPids()
+        if (extra !== extraFor) {
+            extraFor = extra
+            slow = (SLOW_PIDS + extra.filter { it !in SLOW_PIDS && it !in FAST_PIDS })
+                .filter { supported == null || it.code in supported }
+        }
+        asked.clear()
+        for (pid in FAST_PIDS) if (pid.isAskable(unsupported, cooldown)) asked += pid
+        slow.getOrNull(round % slow.size.coerceAtLeast(1))?.let { if (it.isAskable(unsupported, cooldown)) asked += it }
+        missed.clear()
         for (pid in asked) {
-            val value = parsePid(link.send("01%02X".format(pid.code), COMMAND_TIMEOUT_MS), pid)
+            val value = parsePid(link.send(pid.command, COMMAND_TIMEOUT_MS), pid)
             if (value == null) missed += pid else {
                 values = values.with(pid, value)
                 misses.remove(pid)
@@ -288,6 +309,8 @@ internal suspend fun readUntilSilent(
         round++
     }
 }
+
+private fun Pid.isAskable(unsupported: Set<Pid>, cooldown: Map<Pid, Int>) = this !in unsupported && (cooldown[this] ?: 0) <= 0
 
 private fun retryDelay(problem: ObdProblem) =
     if (problem == ObdProblem.NoAdapter || problem == ObdProblem.BluetoothOff) IDLE_RETRY_MS else RETRY_MS

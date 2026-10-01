@@ -34,6 +34,11 @@ android {
         buildConfigField("String", "UPDATE_MANIFEST_URL", "\"$manifestUrl\"")
     }
 
+    // The app is in Vietnamese and English only: the libraries' strings in other languages would only add weight.
+    androidResources {
+        localeFilters += listOf("vi", "en")
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true

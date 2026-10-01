@@ -19,7 +19,12 @@ import androidx.core.content.ContextCompat
 import com.minhphan.launcher.LauncherApplication
 import com.minhphan.launcher.MainActivity
 import com.minhphan.launcher.R
+import com.minhphan.launcher.inAppLanguage
+import com.minhphan.launcher.data.DriveState
+import com.minhphan.launcher.data.SpeedSource
+import com.minhphan.launcher.data.carSpeed
 import com.minhphan.launcher.data.gpsLocations
+import com.minhphan.launcher.data.nextMoving
 import com.minhphan.launcher.obd.ObdProblem
 import com.minhphan.launcher.obd.ObdState
 import com.minhphan.launcher.obd.ObdValues
@@ -29,6 +34,7 @@ import com.minhphan.trip.LatLon
 import com.minhphan.trip.TripEvent
 import com.minhphan.trip.TripTracker
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -36,16 +42,22 @@ import kotlinx.coroutines.launch
 import java.time.ZoneId
 
 /**
- * Records trips for as long as it runs, also while another app such as a map is on screen: it listens to the GPS
- * and, while the OBD adapter is connected, to the engine, hands both to a [TripTracker] and sends the result to
- * Firestore through the [TripUploader]. It runs as a foreground service (with a small notification) because Android
- * would otherwise stop location updates the moment the launcher leaves the screen.
+ * Runs while the car is driven, also while another app such as a map is on screen, as a foreground service (with a
+ * small notification) because Android would otherwise stop location updates the moment the launcher leaves the screen.
  *
- * The home screen starts and stops it with [start] and [stop] whenever the settings, the account or the
- * location permission change.
+ * While the driver has a journey running it keeps the trip clock ([com.minhphan.trip.DriveClock], in the drive log):
+ * every couple of seconds it says whether the car is moving, from the OBD adapter's speed while it is connected and
+ * the GPS's otherwise, so the journey counts its time on the move. When the driver has asked for trips to be sent to
+ * their account and is signed in, it records them too: it hands the GPS and the engine to a [TripTracker] and sends
+ * the result to Firestore through the [TripUploader].
+ *
+ * The home screen starts it with [start] while there is either to do, and again whenever that changes, so it takes up
+ * or drops each; it stops it with [stop] when there is neither, or no location permission. With neither it stops
+ * itself too, so the GPS is not kept on for nothing.
  */
 class TripRecorderService : Service() {
-    private var scope: CoroutineScope? = null
+    private var clockScope: CoroutineScope? = null
+    private var cloudScope: CoroutineScope? = null
     private var tracker: TripTracker? = null
 
     // The head unit's clock can be minutes out, so "now" is worked out from the GPS time of the last fix.
@@ -56,31 +68,72 @@ class TripRecorderService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    // Its notification in the launcher's language, like the rest of it.
+    override fun attachBaseContext(newBase: Context) = super.attachBaseContext(newBase.inAppLanguage())
+
     @SuppressLint("InlinedApi") // the constant is inlined; older versions ignore the type
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val app = application as LauncherApplication
+        val sending = app.settingsStore.settings.value.syncTrips && app.cloud.uid != null
+        val counting = app.driveLog.drives.value.current != null
+        if (!sending && !counting) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
         try {
-            ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+            // Also when it already runs: the notification says whether anything is being sent.
+            ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(sending), ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
         } catch (e: Exception) {
             // Android refuses to start a location service from the background, or without the permission.
             Log.w(TAG, "Cannot run in the foreground", e)
             stopSelf()
             return START_NOT_STICKY
         }
-        val app = application as LauncherApplication
-        if (!app.settingsStore.settings.value.syncTrips || app.cloud.uid == null) {
-            stopSelf()
-            return START_NOT_STICKY
-        }
-        if (scope == null) startRecording(app)
+        if (counting && clockScope == null) startClock(app)
+        if (!counting && clockScope != null) stopClock()
+        if (sending && cloudScope == null) startSending(app)
+        if (!sending && cloudScope != null) stopSending(app)
         return START_STICKY
     }
 
-    private fun startRecording(app: LauncherApplication) {
+    /**
+     * The trip clock: the latest GPS speed and the adapter's, and every [CLOCK_STEP_MS] whether the car is moving.
+     * The readings only set these; the drive log is told no more often than that.
+     */
+    private fun startClock(app: LauncherApplication) {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default).also { clockScope = it }
+        val speeds = ClockSpeeds()
+        scope.launch { app.obdHub.states.collect { speeds.obdKmh = (it as? ObdState.Connected)?.values?.speedKmh } }
+        scope.launch {
+            gpsLocations(this@TripRecorderService).collect {
+                speeds.gpsKmh = if (it.hasSpeed()) it.speed * 3.6f else 0f
+                speeds.gpsAt = SystemClock.elapsedRealtime()
+            }
+        }
+        scope.launch {
+            var moving = false
+            while (true) {
+                delay(CLOCK_STEP_MS)
+                val gpsFresh = speeds.gpsAt > 0 && SystemClock.elapsedRealtime() - speeds.gpsAt < GPS_FRESH_MS
+                val speed = carSpeed(speeds.obdKmh, if (gpsFresh) DriveState.Fix(speeds.gpsKmh) else DriveState.NoFix)
+                // Neither the adapter nor the GPS: not known to move, so nothing is counted until one says so.
+                moving = speed.source != SpeedSource.None && nextMoving(moving, speed)
+                app.driveLog.onDriveReading(System.currentTimeMillis(), moving)
+            }
+        }
+    }
+
+    private fun stopClock() {
+        clockScope?.cancel()
+        clockScope = null
+    }
+
+    private fun startSending(app: LauncherApplication) {
         val tracker = TripTracker(ZoneId.systemDefault()).also { this.tracker = it }
         val uploader = app.tripUploader
         app.syncStatus.recording(true)
         // The one thread of the process for this work, so a service that is stopped and started again cannot overlap.
-        val scope = CoroutineScope(SupervisorJob() + app.recorderDispatcher).also { this.scope = it }
+        val scope = CoroutineScope(SupervisorJob() + app.recorderDispatcher).also { this.cloudScope = it }
         var engine = EngineData()
         // What OBD itself says the car is doing, kept next to [engine] so GPS and OBD can stand in for each other:
         // a fix missing its own speed (poor signal) borrows this, and [tracker] bridges a lost GPS fix with it.
@@ -94,10 +147,8 @@ class TripRecorderService : Service() {
         }
 
         scope.launch {
-            // What an earlier run left behind: a trip it never got to close (the head unit went dark with the car),
-            // and fill-ups logged while nobody was signed in.
+            // What an earlier run left behind: a trip it never got to close (the head unit went dark with the car).
             app.driveLog.openTrip()?.let { (uid, tripId) -> if (uploader.closeTrip(uid, tripId)) app.driveLog.clearOpenTrip() }
-            app.uploadPendingRefuels()
             uploader.cleanupOldRoutes(System.currentTimeMillis())
         }
         scope.launch {
@@ -121,33 +172,32 @@ class TripRecorderService : Service() {
                 app.driveLog.onFix(fix)
                 send(tracker.onFix(fix, engine))
             }
-            // The flow ends when there is no location permission or no GPS: nothing to record.
-            stopSelf()
         }
+    }
+
+    /** Stops sending; the trip being sent is closed, on the same thread as the sending, after whatever step was running. */
+    private fun stopSending(app: LauncherApplication) {
+        cloudScope?.cancel()
+        cloudScope = null
+        val tracker = tracker ?: return
+        this.tracker = null
+        val finishTime = gpsNow()
+        CoroutineScope(app.recorderDispatcher).launch {
+            val events = tracker.finish(finishTime)
+            app.tripUploader.handle(events)?.let { uid -> app.driveLog.noteTripEvents(events, uid) }
+        }
+        app.syncStatus.recording(false)
     }
 
     override fun onDestroy() {
-        scope?.cancel()
-        val tracker = tracker
-        if (tracker != null) {
-            // On the same thread as the recording, after whatever step was running: the trip in progress is closed.
-            val app = application as LauncherApplication
-            val finishTime = gpsNow()
-            CoroutineScope(app.recorderDispatcher).launch {
-                val events = tracker.finish(finishTime)
-                app.tripUploader.handle(events)?.let { uid -> app.driveLog.noteTripEvents(events, uid) }
-            }
-        }
-        scope = null
-        this.tracker = null
-        (application as LauncherApplication).apply {
-            driveLog.flush()
-            syncStatus.recording(false)
-        }
+        val app = application as LauncherApplication
+        stopClock()
+        stopSending(app)
+        app.driveLog.flush()
         super.onDestroy()
     }
 
-    private fun notification(): Notification {
+    private fun notification(sending: Boolean): Notification {
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL_ID, getString(R.string.trip_channel_name), NotificationManager.IMPORTANCE_LOW),
@@ -157,8 +207,8 @@ class TripRecorderService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_route)
-            .setContentTitle(getString(R.string.trip_notification_title))
-            .setContentText(getString(R.string.trip_notification_text))
+            .setContentTitle(getString(if (sending) R.string.trip_notification_title else R.string.trip_notification_title_clock))
+            .setContentText(getString(if (sending) R.string.trip_notification_text else R.string.trip_notification_text_clock))
             .setContentIntent(open)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -172,7 +222,13 @@ class TripRecorderService : Service() {
         private const val NOTIFICATION_ID = 1
         private const val TICK_MS = 30_000L
 
-        /** Starts recording; safe to call again while it runs. Call it while the launcher is on screen. */
+        /** How often the trip clock is told whether the car moves. */
+        private const val CLOCK_STEP_MS = 2_000L
+
+        /** A GPS speed older than this says nothing about now (a tunnel, a garage). */
+        private const val GPS_FRESH_MS = 5_000L
+
+        /** Starts it, or brings it up to date with the settings; safe to call again while it runs. Call it while the launcher is on screen. */
         fun start(context: Context) {
             try {
                 ContextCompat.startForegroundService(context, Intent(context, TripRecorderService::class.java))
@@ -186,6 +242,14 @@ class TripRecorderService : Service() {
             context.stopService(Intent(context, TripRecorderService::class.java))
         }
     }
+}
+
+/** The latest speeds the trip clock reads, written by the GPS and the adapter on their own threads. */
+private class ClockSpeeds {
+    @Volatile var obdKmh: Int? = null
+    @Volatile var gpsKmh = 0f
+    /** When the last fix came, in elapsed realtime; 0 before the first. */
+    @Volatile var gpsAt = 0L
 }
 
 /** [obdFallbackKmh] stands in when this fix has a position but, in poor signal, no speed of its own. */

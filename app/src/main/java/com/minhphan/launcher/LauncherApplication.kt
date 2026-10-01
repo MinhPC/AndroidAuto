@@ -1,7 +1,9 @@
 package com.minhphan.launcher
 
 import android.app.Application
+import android.content.Context
 import com.minhphan.launcher.data.DriveLog
+import com.minhphan.launcher.data.HeadlightMonitor
 import com.minhphan.launcher.data.SettingsStore
 import com.minhphan.launcher.obd.ObdHub
 import com.minhphan.cloud.CloudAccount
@@ -17,6 +19,8 @@ import kotlinx.coroutines.SupervisorJob
  * service that outlives the screen, and two OBD connections or two copies of the settings would fight.
  */
 class LauncherApplication : Application() {
+    override fun attachBaseContext(base: Context) = super.attachBaseContext(base.inAppLanguage())
+
     /** Lives as long as the process; for work that must not stop when the home screen is closed. */
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -28,17 +32,10 @@ class LauncherApplication : Application() {
     val recorderDispatcher = Dispatchers.Default.limitedParallelism(1)
 
     val settingsStore by lazy { SettingsStore(this) }
+    val headlights by lazy { HeadlightMonitor(this) }
     val obdHub by lazy { ObdHub(this, settingsStore.settings, appScope, settingsStore::setCarPids) }
     val cloud by lazy { CloudAccount(this) }
     val driveLog by lazy { DriveLog(this) }
     val syncStatus = SyncStatus()
-    /** Hands every fill-up Firebase has not been given yet over to it: all of them for a driver who was signed out when they were logged. */
-    fun uploadPendingRefuels() {
-        val sent = driveLog.pendingRefuels().filter { tripUploader.saveRefuel(it) }.map { it.id }
-        if (sent.isNotEmpty()) driveLog.refuelsSent(sent)
-    }
-
-    val tripUploader by lazy {
-        TripUploader(this, cloud, syncStatus) { driveLog.fuelEstimate(settingsStore.settings.value.tankLiters) }
-    }
+    val tripUploader by lazy { TripUploader(this, cloud, syncStatus) }
 }

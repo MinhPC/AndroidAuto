@@ -18,19 +18,15 @@ from homeassistant.util import dt as dt_util
 from .const import DOMAIN, IDLE_INTERVAL, MOVING_INTERVAL
 from .firestore import FirestoreAuthError, FirestoreClient, FirestoreError
 from .models import (
-    FuelStats,
     Live,
-    Refuel,
     Totals,
     Trip,
     chunk_midpoint,
     chunk_seqs,
-    fuel_stats,
     google_maps_route_url,
     month_range,
     parse_day,
     parse_live,
-    parse_refuel,
     parse_trip,
     route_geojson,
     totals_between,
@@ -45,9 +41,6 @@ _SUMMED = ["distanceKm", "trips", "movingSeconds"]
 # The days before today are read again this often, and when a new day starts: they change only when the car
 # sends a trip it kept offline. Today is read on every poll.
 HISTORY_MAX_AGE_SECONDS = 3600
-
-# How many fill-ups are read to work out the economy and the month's cost.
-REFUELS_KEPT = 20
 
 # The route of a trip that is still going on is read again this often; a finished one is read once. Each read
 # costs a look at the last chunk and one read for each waypoint, so about ten.
@@ -67,22 +60,6 @@ ROUTE_DETAIL_POINTS = 500
 _CHUNKS_QUERY = {"from": [{"collectionId": "chunks"}], "limit": ROUTE_DETAIL_CHUNKS}
 
 
-def _refuel_query(limit: int) -> dict[str, Any]:
-    return {
-        "from": [{"collectionId": "refuels"}],
-        "orderBy": [{"field": {"fieldPath": "at"}, "direction": "DESCENDING"}],
-        "limit": limit,
-    }
-
-
-def _month_bounds(month: tuple[date, date]) -> tuple[float, float]:
-    """The month as epoch seconds, from its first midnight to the midnight after its last day, in Home Assistant's time zone."""
-    first, last = month
-    start = dt_util.start_of_local_day(first)
-    end = dt_util.start_of_local_day(last + timedelta(days=1))
-    return start.timestamp(), end.timestamp()
-
-
 @dataclass(frozen=True)
 class CarData:
     live: Live | None
@@ -91,7 +68,6 @@ class CarData:
     month: Totals
     year: Totals
     last_trip: Trip | None
-    fuel: FuelStats
     route_url: str | None = None
     route_geojson: str | None = None
 
@@ -116,9 +92,6 @@ class CarTripsCoordinator(DataUpdateCoordinator[CarData]):
         self._history: list[dict[str, Any]] = []
         self._history_day: date | None = None
         self._history_read_at = 0.0
-        self._refuels: list[Refuel] = []
-        self._refuels_newest: str | None = None
-        self._refuels_read = False
         self._route_key: tuple[str, bool] | None = None
         self._route_read_at = 0.0
         self._route_link: str | None = None
@@ -185,17 +158,6 @@ class CarTripsCoordinator(DataUpdateCoordinator[CarData]):
         self._geojson_cache = route_geojson(chunks, ROUTE_DETAIL_POINTS)
         return self._geojson_cache
 
-    async def _fill_ups(self, user: str) -> list[Refuel]:
-        """The latest fill-ups. One read says whether there is a new one; only then are they all read again."""
-        newest = await self.client.run_query(user, _refuel_query(1))
-        newest_id = newest[0]["_id"] if newest else None
-        if self._refuels_read and newest_id == self._refuels_newest:
-            return self._refuels
-        docs = await self.client.run_query(user, _refuel_query(REFUELS_KEPT)) if newest_id else []
-        self._refuels = [refuel for doc in docs if (refuel := parse_refuel(doc))]
-        self._refuels_newest, self._refuels_read = newest_id, True
-        return self._refuels
-
     async def _past_days(self, user: str, day: date, first: date) -> list[dict[str, Any]]:
         """The day totals from [first] to yesterday. Firestore cannot add them up, so they are read and kept."""
         now = time.monotonic()
@@ -216,7 +178,7 @@ class CarTripsCoordinator(DataUpdateCoordinator[CarData]):
         week, month, year = week_range(day), month_range(day), year_range(day)
 
         try:
-            live_doc, today_doc, trips, past_days, refuels = await asyncio.gather(
+            live_doc, today_doc, trips, past_days = await asyncio.gather(
                 self.client.get_document(f"{user}/live/car"),
                 self.client.get_document(f"{user}/days/{day.isoformat()}"),
                 self.client.run_query(
@@ -228,7 +190,6 @@ class CarTripsCoordinator(DataUpdateCoordinator[CarData]):
                     },
                 ),
                 self._past_days(user, day, min(week[0], year[0])),
-                self._fill_ups(user),
             )
         except FirestoreAuthError as err:
             raise ConfigEntryAuthFailed(str(err)) from err
@@ -252,7 +213,6 @@ class CarTripsCoordinator(DataUpdateCoordinator[CarData]):
             month=totals_between(days, *month),
             year=totals_between(days, *year),
             last_trip=trip,
-            fuel=fuel_stats(refuels, *_month_bounds(month)),
             route_url=route_url,
             route_geojson=geojson,
         )

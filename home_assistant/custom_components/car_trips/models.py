@@ -5,7 +5,6 @@ The field names are the ones in the launcher's Schema.kt:
     users/{uid}/live/car             where the car is now
     users/{uid}/days/{yyyy-MM-dd}    the total of one local day
     users/{uid}/trips/{tripId}       one trip
-    users/{uid}/refuels/{id}         one fill-up
 """
 
 from __future__ import annotations
@@ -43,17 +42,6 @@ class Engine:
 
 
 @dataclass(frozen=True)
-class FuelLevel:
-    """How much fuel the launcher thinks is left. The car does not say, so it counts down from the last full fill-up."""
-
-    liters: float
-    range_km: float
-    percent: int | None  # None when the document does not say
-    km_per_liter: float | None
-    assumed: bool  # true until the driver's own economy is known and a typical one stands in for it
-
-
-@dataclass(frozen=True)
 class Live:
     latitude: float
     longitude: float
@@ -61,7 +49,6 @@ class Live:
     moving: bool
     updated_at: float  # seconds since the epoch
     engine: Engine
-    fuel: FuelLevel | None = None
 
     def settled(self, now: float) -> Live:
         """As it should be shown at [now]: a car not heard from for a while is not known to be moving."""
@@ -131,22 +118,6 @@ def parse_live(data: dict[str, Any] | None) -> Live | None:
             fuel_trim_percent=_int(engine, "fuelTrimPercent"),
             voltage=_number(engine, "voltage"),
         ),
-        fuel=_parse_fuel(data.get("fuel")),
-    )
-
-
-def _parse_fuel(data: Any) -> FuelLevel | None:
-    if not isinstance(data, dict):
-        return None
-    liters, range_km, percent, economy = (_number(data, key) for key in ("liters", "rangeKm", "percent", "kmPerLiter"))
-    if liters is None or range_km is None:
-        return None
-    return FuelLevel(
-        liters=liters,
-        range_km=range_km,
-        percent=round(percent) if percent is not None else None,
-        km_per_liter=economy,
-        assumed=data.get("assumed") is True,
     )
 
 
@@ -185,68 +156,6 @@ def parse_day(data: dict[str, Any] | None) -> Totals:
         trips=_int(data, "trips") or 0,
         moving_seconds=_int(data, "movingSeconds") or 0,
         max_speed_kmh=_number(data, "maxSpeedKmh") or 0.0,
-    )
-
-
-@dataclass(frozen=True)
-class Refuel:
-    """One fill-up. The economy is only known for a full fill-up that had a full one before it."""
-
-    id: str
-    at: float  # seconds since the epoch
-    liters: float
-    amount_vnd: int
-    full: bool
-    distance_km: float | None
-    liters_in_period: float | None
-
-    @property
-    def price_per_liter(self) -> int:
-        return round(self.amount_vnd / self.liters) if self.liters > 0 else 0
-
-    @property
-    def km_per_liter(self) -> float | None:
-        if self.distance_km and self.liters_in_period and self.distance_km > 0 and self.liters_in_period > 0:
-            return self.distance_km / self.liters_in_period
-        return None
-
-
-@dataclass(frozen=True)
-class FuelStats:
-    """What the fill-ups say: the latest one, the economy, and what this month has cost."""
-
-    last: Refuel | None = None
-    last_economy: float | None = None  # km per litre at the latest fill-up that has one
-    average_economy: float | None = None  # all their kilometres over all their litres
-    month_cost_vnd: int = 0
-
-
-def parse_refuel(data: dict[str, Any] | None) -> Refuel | None:
-    if not data:
-        return None
-    at, liters = _number(data, "at"), _number(data, "liters")
-    if at is None or liters is None or liters <= 0:
-        return None
-    return Refuel(
-        id=str(data.get("_id", "")),
-        at=at / 1000,
-        liters=liters,
-        amount_vnd=_int(data, "amountVnd") or 0,
-        full=data.get("full") is True,
-        distance_km=_number(data, "distanceKm"),
-        liters_in_period=_number(data, "litersInPeriod"),
-    )
-
-
-def fuel_stats(refuels: list[Refuel], month_start: float, month_end: float) -> FuelStats:
-    """Stats from [refuels] (newest first); the month runs from [month_start] up to [month_end], in epoch seconds."""
-    measured = [r for r in refuels if r.km_per_liter is not None]
-    liters = sum(r.liters_in_period or 0.0 for r in measured)
-    return FuelStats(
-        last=refuels[0] if refuels else None,
-        last_economy=measured[0].km_per_liter if measured else None,
-        average_economy=sum(r.distance_km or 0.0 for r in measured) / liters if liters > 0 else None,
-        month_cost_vnd=sum(r.amount_vnd for r in refuels if month_start <= r.at < month_end),
     )
 
 

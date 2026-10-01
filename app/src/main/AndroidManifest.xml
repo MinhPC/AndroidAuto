@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- The bar along the top of Home shows whether Wi-Fi is connected. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- GPS speed decides whether the car on the home screen is driving or standing still. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
@@ -29,29 +31,19 @@
         android:name="android.hardware.touchscreen"
         android:required="false" />
 
-    <!-- Used only to pick default pinned apps, to see which Home app is active, and for the diagnostics screen. -->
+    <!-- The packages: for the diagnostics screen. HOME: to see which Home app is active. LAUNCHER: every app with an
+         icon, for All apps; without it Android 11+ hides most apps from the list, even from the default Home app. -->
     <queries>
         <package android:name="com.google.android.apps.maps" />
         <package android:name="com.waze" />
         <package android:name="com.google.android.gms" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
-            <category android:name="android.intent.category.APP_MAPS" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.MAIN" />
-            <category android:name="android.intent.category.APP_MUSIC" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.MAIN" />
-            <category android:name="android.intent.category.APP_MESSAGING" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.DIAL" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.HOME" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
         </intent>
     </queries>
 

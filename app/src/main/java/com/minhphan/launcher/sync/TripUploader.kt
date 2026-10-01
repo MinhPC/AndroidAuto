@@ -9,8 +9,6 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.minhphan.cloud.CloudAccount
-import com.minhphan.trip.FuelEstimate
-import com.minhphan.trip.Refuel
 import com.minhphan.trip.Schema
 import com.minhphan.trip.TripEvent
 import com.minhphan.trip.toMap
@@ -29,8 +27,6 @@ class TripUploader(
     context: Context,
     private val account: CloudAccount,
     private val status: SyncStatus,
-    /** How much fuel is thought to be left now; sent with the live position. */
-    private val fuelEstimate: () -> FuelEstimate? = { null },
 ) {
     private val db: FirebaseFirestore? =
         if (FirebaseApp.getApps(context).isEmpty()) null else FirebaseFirestore.getInstance()
@@ -64,7 +60,7 @@ class TripUploader(
                     }
                     user.collection(Schema.DAYS).document(event.day).track { set(total, SetOptions.merge()) }
                 }
-                is TripEvent.Live -> user.collection(Schema.LIVE).document(Schema.LIVE_DOC).write(event.status.copy(fuel = fuelEstimate()).toMap())
+                is TripEvent.Live -> user.collection(Schema.LIVE).document(Schema.LIVE_DOC).write(event.status.toMap())
             }
         }
         return uid
@@ -118,29 +114,6 @@ class TripUploader(
             for (doc in group) batch.delete(doc.reference)
             batch.commit().await()
         }
-    }
-
-    /**
-     * Sends the fuel estimate alone, merged into the live document, so that it shows up at once after a fill-up
-     * instead of with the next position. Nothing is sent while nobody is signed in.
-     */
-    fun saveFuel(estimate: FuelEstimate?) {
-        val db = db ?: return
-        val uid = account.uid ?: return
-        estimate ?: return
-        val fields = mapOf("fuel" to estimate.toMap())
-        db.collection(Schema.USERS).document(uid).collection(Schema.LIVE).document(Schema.LIVE_DOC).track { set(fields, SetOptions.merge()) }
-    }
-
-    /**
-     * Hands a fill-up to Firestore, which keeps it if there is no connection and sends it later; true when it was
-     * handed over, false while nobody is signed in (the caller keeps it and tries again). Sending it twice is harmless.
-     */
-    fun saveRefuel(refuel: Refuel): Boolean {
-        val db = db ?: return false
-        val uid = account.uid ?: return false
-        db.collection(Schema.USERS).document(uid).collection(Schema.REFUELS).document(refuel.id).write(refuel.toMap())
-        return true
     }
 
     /**

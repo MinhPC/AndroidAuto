@@ -17,16 +17,12 @@ fun recordLaunch(counts: Map<String, Int>, key: String): Map<String, Int> {
 }
 
 /**
- * The order of the All apps list: the apps on the dock first, in the dock's order; then the apps launched most often
- * here; then the rest. [alphabetical] must already be in name order, which is what apps with the same count keep.
+ * The apps launched most often here first, then the rest; All apps shows the first few as its frequent row. [alphabetical] must already
+ * be in name order, which is what apps with the same count keep.
  */
-fun <T> smartOrder(alphabetical: List<T>, key: (T) -> String, pinned: List<String>, counts: Map<String, Int>): List<T> {
-    val dockPlace = pinned.withIndex().associate { (index, appKey) -> appKey to index }
-    // sortedWith is stable: what compares equal stays in name order.
-    return alphabetical.sortedWith(
-        compareBy<T> { dockPlace[key(it)] ?: Int.MAX_VALUE }.thenByDescending { counts[key(it)] ?: 0 },
-    )
-}
+fun <T> smartOrder(alphabetical: List<T>, key: (T) -> String, counts: Map<String, Int>): List<T> =
+    // sortedByDescending is stable: what compares equal stays in name order.
+    alphabetical.sortedByDescending { counts[key(it)] ?: 0 }
 
 /** Remembers how many times each app has been launched from the launcher, in the "app_usage" preferences. */
 class UsageStore(context: Context) {

@@ -176,7 +176,6 @@ class SampleCar:
             "speedKmh": round(speed, 1),
             "moving": True,
             "updatedAt": int(now * 1000),
-            "fuel": {"liters": 31.0, "rangeKm": 372.0, "percent": 62, "kmPerLiter": 12.0, "assumed": False},
             "engine": {
                 "rpm": int(800 + speed * 32),
                 "coolantC": min(90, 70 + int((ONGOING_TRIP_STARTED_MINUTES_AGO * 60 + elapsed) / 60)),
@@ -213,16 +212,4 @@ class SampleCar:
             documents[f"{user}/trips/{trip['id']}"] = fields
         for day, total in self._days(trips).items():
             documents[f"{user}/days/{day}"] = total
-        for ago_days, liters, distance in ((35, 38.0, None), (21, 36.5, 480.0), (8, 34.0, 455.0)):
-            at = int((now - ago_days * 86400) * 1000)
-            refuel: dict[str, Any] = {
-                "at": at,
-                "liters": liters,
-                "amountVnd": round(liters * 23_400),
-                "pricePerLiter": 23_400,
-                "full": True,
-            }
-            if distance is not None:
-                refuel |= {"distanceKm": distance, "litersInPeriod": liters, "kmPerLiter": round(distance / liters, 3)}
-            documents[f"{user}/refuels/{at}"] = refuel
         return documents

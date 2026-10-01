@@ -21,7 +21,6 @@ from homeassistant.const import (
     UnitOfSpeed,
     UnitOfTemperature,
     UnitOfTime,
-    UnitOfVolume,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -52,11 +51,6 @@ def _time(seconds: float | None) -> datetime | None:
 
 def _engine(read: Callable[[Any], StateType]) -> Callable[[CarData], StateType]:
     return lambda data: read(data.live.engine) if data.live else None
-
-
-def _fuel(read: Callable[[Any], StateType | datetime]) -> Callable[[CarData], StateType | datetime]:
-    """A value of the latest fill-up; unknown until the driver has logged one."""
-    return lambda data: read(data.fuel.last) if data.fuel.last else None
 
 
 def _trip(read: Callable[[Any], StateType | datetime]) -> Callable[[CarData], StateType | datetime]:
@@ -250,98 +244,6 @@ SENSORS: tuple[CarSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         entity_registry_enabled_default=False,
         value_fn=_trip(lambda t: t.max_intake_c),
-    ),
-    # How much fuel is left, counted down by the launcher from the last full fill-up (the car does not report it).
-    CarSensorDescription(
-        key="fuel_range",
-        translation_key="fuel_range",
-        device_class=SensorDeviceClass.DISTANCE,
-        native_unit_of_measurement=UnitOfLength.KILOMETERS,
-        state_class=SensorStateClass.MEASUREMENT,
-        suggested_display_precision=0,
-        value_fn=lambda d: round(d.live.fuel.range_km) if d.live and d.live.fuel else None,
-        attributes_fn=lambda d: (
-            {
-                **(
-                    {"economy_km_per_liter": round(d.live.fuel.km_per_liter, 2)}
-                    if d.live.fuel.km_per_liter is not None
-                    else {}
-                ),
-                "economy_assumed": d.live.fuel.assumed,
-            }
-            if d.live and d.live.fuel
-            else {}
-        ),
-    ),
-    CarSensorDescription(
-        key="fuel_remaining",
-        translation_key="fuel_remaining",
-        device_class=SensorDeviceClass.VOLUME_STORAGE,
-        native_unit_of_measurement=UnitOfVolume.LITERS,
-        state_class=SensorStateClass.MEASUREMENT,
-        suggested_display_precision=1,
-        value_fn=lambda d: round(d.live.fuel.liters, 1) if d.live and d.live.fuel else None,
-    ),
-    CarSensorDescription(
-        key="fuel_level_estimate",
-        translation_key="fuel_level_estimate",
-        native_unit_of_measurement=PERCENTAGE,
-        state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda d: d.live.fuel.percent if d.live and d.live.fuel else None,
-    ),
-    # The fuel book: what the driver logs at the pump on the launcher.
-    CarSensorDescription(
-        key="fuel_economy",
-        translation_key="fuel_economy",
-        native_unit_of_measurement="km/L",
-        state_class=SensorStateClass.MEASUREMENT,
-        suggested_display_precision=1,
-        value_fn=lambda d: round(d.fuel.last_economy, 2) if d.fuel.last_economy is not None else None,
-    ),
-    CarSensorDescription(
-        key="fuel_economy_average",
-        translation_key="fuel_economy_average",
-        native_unit_of_measurement="km/L",
-        state_class=SensorStateClass.MEASUREMENT,
-        suggested_display_precision=1,
-        value_fn=lambda d: round(d.fuel.average_economy, 2) if d.fuel.average_economy is not None else None,
-    ),
-    CarSensorDescription(
-        key="last_refuel_liters",
-        translation_key="last_refuel_liters",
-        device_class=SensorDeviceClass.VOLUME,
-        native_unit_of_measurement=UnitOfVolume.LITERS,
-        suggested_display_precision=1,
-        value_fn=_fuel(lambda r: r.liters),
-    ),
-    CarSensorDescription(
-        key="last_refuel_cost",
-        translation_key="last_refuel_cost",
-        device_class=SensorDeviceClass.MONETARY,
-        native_unit_of_measurement="VND",
-        suggested_display_precision=0,
-        value_fn=_fuel(lambda r: r.amount_vnd),
-    ),
-    CarSensorDescription(
-        key="last_refuel_price",
-        translation_key="last_refuel_price",
-        native_unit_of_measurement="VND/L",
-        suggested_display_precision=0,
-        value_fn=_fuel(lambda r: r.price_per_liter),
-    ),
-    CarSensorDescription(
-        key="last_refuel_time",
-        translation_key="last_refuel_time",
-        device_class=SensorDeviceClass.TIMESTAMP,
-        value_fn=_fuel(lambda r: _time(r.at)),
-    ),
-    CarSensorDescription(
-        key="fuel_cost_month",
-        translation_key="fuel_cost_month",
-        device_class=SensorDeviceClass.MONETARY,
-        native_unit_of_measurement="VND",
-        suggested_display_precision=0,
-        value_fn=lambda d: d.fuel.month_cost_vnd,
     ),
     CarSensorDescription(
         key="last_update",

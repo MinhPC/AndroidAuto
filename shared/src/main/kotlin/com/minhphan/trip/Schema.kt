@@ -7,7 +7,6 @@ package com.minhphan.trip
  *     users/{uid}/trips/{tripId}               one [TripSummary] per trip
  *     users/{uid}/trips/{tripId}/chunks/{seq}  the route, [TripPoint]s a minute or so at a time
  *     users/{uid}/live/car                     the [LiveStatus]
- *     users/{uid}/refuels/{id}                 one [Refuel] per fill-up
  *
  * The maps are what is stored. Firestore hands numbers back as Long or Double whatever was written, so they are
  * read through [Number] and never cast.
@@ -18,7 +17,6 @@ object Schema {
     const val TRIPS = "trips"
     const val CHUNKS = "chunks"
     const val LIVE = "live"
-    const val REFUELS = "refuels"
     const val LIVE_DOC = "car"
     const val POINTS = "points"
 
@@ -162,26 +160,6 @@ fun LiveStatus.toMap(): Map<String, Any?> = mapOf(
     "updatedAt" to updatedAt,
     "engine" to engine.toMap(),
 )
-    .withIfNotNull("fuel", fuel?.toMap())
-
-fun FuelEstimate.toMap(): Map<String, Any?> = mapOf(
-    "liters" to liters,
-    "rangeKm" to rangeKm,
-    "percent" to percent,
-    "kmPerLiter" to kmPerLiter,
-    "assumed" to assumed,
-)
-
-private fun fuelEstimateFrom(map: Map<String, Any?>?): FuelEstimate? {
-    if (map == null) return null
-    return FuelEstimate(
-        liters = map["liters"].double() ?: return null,
-        rangeKm = map["rangeKm"].double() ?: return null,
-        percent = map["percent"].int() ?: return null,
-        kmPerLiter = map["kmPerLiter"].double() ?: return null,
-        assumed = map["assumed"] as? Boolean ?: false,
-    )
-}
 
 fun liveStatusFrom(map: Map<String, Any?>): LiveStatus? {
     val position = latLonFrom(map["position"].map()) ?: return null
@@ -192,31 +170,5 @@ fun liveStatusFrom(map: Map<String, Any?>): LiveStatus? {
         moving = map["moving"] as? Boolean ?: false,
         updatedAt = updatedAt,
         engine = engineFrom(map["engine"].map()),
-        fuel = fuelEstimateFrom(map["fuel"].map()),
-    )
-}
-
-fun Refuel.toMap(): Map<String, Any?> = mapOf(
-    "at" to at,
-    "liters" to liters,
-    "amountVnd" to amountVnd,
-    "pricePerLiter" to pricePerLiter,
-    "full" to full,
-)
-    .withIfNotNull("distanceKm", distanceKm)
-    .withIfNotNull("litersInPeriod", litersInPeriod)
-    .withIfNotNull("kmPerLiter", kmPerLiter)
-
-fun refuelFrom(id: String, map: Map<String, Any?>): Refuel? {
-    val at = map["at"].long() ?: return null
-    val liters = map["liters"].double() ?: return null
-    return Refuel(
-        id = id,
-        at = at,
-        liters = liters,
-        amountVnd = map["amountVnd"].long() ?: 0,
-        full = map["full"] as? Boolean ?: false,
-        distanceKm = map["distanceKm"].double(),
-        litersInPeriod = map["litersInPeriod"].double(),
     )
 }

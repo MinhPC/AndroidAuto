@@ -6,8 +6,7 @@ import org.junit.Test
 class AppUsageTest {
     private val byName = listOf("Chrome", "Maps", "Music", "Phone", "Zalo")
 
-    private fun order(pinned: List<String> = emptyList(), counts: Map<String, Int> = emptyMap()) =
-        smartOrder(byName, { it }, pinned, counts)
+    private fun order(counts: Map<String, Int> = emptyMap()) = smartOrder(byName, { it }, counts)
 
     @Test
     fun withNothingKnownTheListStaysInNameOrder() {
@@ -15,20 +14,10 @@ class AppUsageTest {
     }
 
     @Test
-    fun theAppsOnTheDockComeFirstInTheDocksOrder() {
-        assertEquals(listOf("Zalo", "Maps", "Chrome", "Music", "Phone"), order(pinned = listOf("Zalo", "Maps")))
-    }
-
-    @Test
-    fun thenTheMostLaunchedAppsAndTheRestKeepTheirNameOrder() {
+    fun theMostLaunchedAppsComeFirstAndTheRestKeepTheirNameOrder() {
         val counts = mapOf("Phone" to 9, "Music" to 9, "Chrome" to 2)
         // Phone and Music tie on nine launches, so they stay in name order; the unused ones follow, by name.
         assertEquals(listOf("Music", "Phone", "Chrome", "Maps", "Zalo"), order(counts = counts))
-    }
-
-    @Test
-    fun aPinnedAppBeatsAMoreLaunchedOne() {
-        assertEquals(listOf("Zalo", "Phone", "Chrome", "Maps", "Music"), order(pinned = listOf("Zalo"), counts = mapOf("Phone" to 50, "Chrome" to 3)))
     }
 
     @Test

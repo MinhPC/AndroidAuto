@@ -49,6 +49,9 @@ enum class Pid(val code: Int, val byteCount: Int, val step: Float = 1f) {
     ReferenceTorque(0x63, 2),
     ;
 
+    /** What is sent to ask for it ("010C"), made once instead of on every round. */
+    val command: String = "01%02X".format(code)
+
     /**
      * The value in steps of [step] of its display unit (rpm, km/h, °C, kPa, bar, g/s, %, V, L/h, Nm, min, km or a
      * count), from the data bytes [a] and [b] of the answer.
@@ -135,29 +138,70 @@ class RecentValues(private val staleAfterMs: Long, private val now: () -> Long) 
 
 /** The data bytes of the answer to "01 <pid>" found in [response], or null if the car did not answer with them. */
 fun parsePidResponse(response: String, code: Int, byteCount: Int): IntArray? {
-    val prefix = "41%02X".format(code)
-    for (line in response.lineSequence()) {
-        val text = line.filterNot { it.isWhitespace() }.uppercase()
-        if (!text.startsWith(prefix) || text.length < prefix.length + byteCount * 2) continue
-        val bytes = (0 until byteCount).map { i ->
-            text.substring(prefix.length + i * 2, prefix.length + i * 2 + 2).toIntOrNull(16)
-        }
-        if (bytes.all { it != null }) return bytes.map { it!! }.toIntArray()
+    var start = 0
+    while (start <= response.length) {
+        val end = lineEnd(response, start)
+        parseLine(response, start, end, code, byteCount)?.let { return it }
+        start = end + 1
     }
     return null
 }
 
 /** The data bytes of every ECU that answered "01 <code>": more than one can reply, and their lines all count. */
 fun parseAllPidResponses(response: String, code: Int, byteCount: Int): List<IntArray> {
-    val prefix = "41%02X".format(code)
-    return response.lineSequence().mapNotNull { line ->
-        val text = line.filterNot { it.isWhitespace() }.uppercase()
-        if (!text.startsWith(prefix) || text.length < prefix.length + byteCount * 2) return@mapNotNull null
-        val bytes = (0 until byteCount).map { i ->
-            text.substring(prefix.length + i * 2, prefix.length + i * 2 + 2).toIntOrNull(16)
+    val answers = ArrayList<IntArray>(1)
+    var start = 0
+    while (start <= response.length) {
+        val end = lineEnd(response, start)
+        parseLine(response, start, end, code, byteCount)?.let { answers += it }
+        start = end + 1
+    }
+    return answers
+}
+
+// Read on every answer, several times a second, so it walks the characters once and makes nothing but the result.
+
+private fun lineEnd(text: String, from: Int): Int {
+    var i = from
+    while (i < text.length && text[i] != '\r' && text[i] != '\n') i++
+    return i
+}
+
+private fun hexDigit(c: Char): Int = when (c) {
+    in '0'..'9' -> c - '0'
+    in 'A'..'F' -> c - 'A' + 10
+    in 'a'..'f' -> c - 'a' + 10
+    else -> -1
+}
+
+/**
+ * The [byteCount] data bytes of the line from [start] to [end] if it answers "01 <code>" (it reads "41", [code], then
+ * the bytes in hex, spaces anywhere), or null. Anything after the bytes is ignored.
+ */
+private fun parseLine(text: String, start: Int, end: Int, code: Int, byteCount: Int): IntArray? {
+    val wanted = 4 + byteCount * 2 // hex digits: "41", the code, the data
+    var bytes: IntArray? = null
+    var digits = 0
+    var i = start
+    while (i < end && digits < wanted) {
+        val c = text[i++]
+        if (c.isWhitespace()) continue
+        val d = hexDigit(c)
+        when (digits) {
+            0 -> if (d != 4) return null
+            1 -> if (d != 1) return null
+            2 -> if (d != ((code shr 4) and 0xF)) return null
+            3 -> if (d != (code and 0xF)) return null
+            else -> {
+                if (d < 0) return null
+                val out = bytes ?: IntArray(byteCount).also { bytes = it }
+                val k = (digits - 4) / 2
+                out[k] = out[k] * 16 + d
+            }
         }
-        if (bytes.all { it != null }) bytes.map { it!! }.toIntArray() else null
-    }.toList()
+        digits++
+    }
+    return if (digits == wanted) bytes ?: IntArray(0) else null
 }
 
 /**
@@ -171,74 +215,74 @@ fun decodeSupported(base: Int, bytes: IntArray): Set<Int> = buildSet {
     }
 }
 
-/** What a mode 01 PID is called, for the diagnostics screen; null for one this app does not know. */
+/** What a mode 01 PID is called, in Vietnamese, for the diagnostics screen; null for one this app does not know. */
 fun obdPidName(code: Int): String? = when (code) {
-    0x01 -> "Monitor status since codes cleared"
-    0x03 -> "Fuel system status"
-    0x04 -> "Engine load"
-    0x05 -> "Coolant temperature"
-    0x06 -> "Short-term fuel trim"
-    0x07 -> "Long-term fuel trim"
-    0x08 -> "Short-term fuel trim, bank 2"
-    0x09 -> "Long-term fuel trim, bank 2"
-    0x0A -> "Fuel pressure"
-    0x0B -> "Intake manifold pressure"
-    0x0C -> "Engine speed"
-    0x0D -> "Vehicle speed"
-    0x0E -> "Timing advance"
-    0x0F -> "Intake air temperature"
-    0x10 -> "Air flow (MAF)"
-    0x11 -> "Throttle position"
-    0x12 -> "Secondary air status"
-    0x13 -> "Oxygen sensors present"
-    in 0x14..0x1B -> "Oxygen sensor ${code - 0x13} voltage"
-    0x1C -> "OBD standard"
-    0x1D -> "Oxygen sensors present (4 banks)"
-    0x1E -> "Auxiliary input status"
-    0x1F -> "Run time since start"
-    0x21 -> "Distance with fault light on"
-    0x22 -> "Fuel rail pressure (vacuum)"
-    0x23 -> "Fuel rail pressure"
-    in 0x24..0x2B -> "Oxygen sensor ${code - 0x23} lambda"
-    0x2C -> "Commanded EGR"
-    0x2D -> "EGR error"
-    0x2E -> "Commanded evaporative purge"
-    0x2F -> "Fuel level"
-    0x30 -> "Warm-ups since codes cleared"
-    0x31 -> "Distance since codes cleared"
-    0x32 -> "Evaporative system vapour pressure"
-    0x33 -> "Barometric pressure"
-    in 0x34..0x3B -> "Oxygen sensor ${code - 0x33} lambda (current)"
-    0x3C -> "Catalyst temperature, bank 1 sensor 1"
-    0x3D -> "Catalyst temperature, bank 2 sensor 1"
-    0x3E -> "Catalyst temperature, bank 1 sensor 2"
-    0x3F -> "Catalyst temperature, bank 2 sensor 2"
-    0x41 -> "Monitor status this drive cycle"
-    0x42 -> "Control module voltage"
-    0x43 -> "Absolute load"
-    0x44 -> "Commanded air-fuel ratio (lambda)"
-    0x45 -> "Relative throttle position"
-    0x46 -> "Ambient air temperature"
-    0x47 -> "Absolute throttle position B"
-    0x48 -> "Absolute throttle position C"
-    0x49 -> "Accelerator pedal position D"
-    0x4A -> "Accelerator pedal position E"
-    0x4B -> "Accelerator pedal position F"
-    0x4C -> "Commanded throttle actuator"
-    0x4D -> "Time with fault light on"
-    0x4E -> "Time since codes cleared"
-    0x51 -> "Fuel type"
-    0x52 -> "Ethanol fuel"
-    0x59 -> "Fuel rail absolute pressure"
-    0x5A -> "Relative accelerator pedal position"
-    0x5B -> "Hybrid battery remaining life"
-    0x5C -> "Engine oil temperature"
-    0x5D -> "Fuel injection timing"
-    0x5E -> "Fuel rate"
-    0x5F -> "Emission requirements"
-    0x61 -> "Driver's demand torque"
-    0x62 -> "Actual engine torque"
-    0x63 -> "Engine reference torque"
+    0x01 -> "Trạng thái kiểm tra từ khi xoá mã lỗi"
+    0x03 -> "Trạng thái hệ thống nhiên liệu"
+    0x04 -> "Tải động cơ"
+    0x05 -> "Nhiệt độ nước làm mát"
+    0x06 -> "Bù nhiên liệu ngắn hạn"
+    0x07 -> "Bù nhiên liệu dài hạn"
+    0x08 -> "Bù nhiên liệu ngắn hạn, dãy 2"
+    0x09 -> "Bù nhiên liệu dài hạn, dãy 2"
+    0x0A -> "Áp suất nhiên liệu"
+    0x0B -> "Áp suất cổ hút"
+    0x0C -> "Vòng tua máy"
+    0x0D -> "Tốc độ xe"
+    0x0E -> "Góc đánh lửa sớm"
+    0x0F -> "Nhiệt độ khí nạp"
+    0x10 -> "Lưu lượng khí nạp (MAF)"
+    0x11 -> "Vị trí bướm ga"
+    0x12 -> "Trạng thái khí phụ"
+    0x13 -> "Cảm biến oxy có trên xe"
+    in 0x14..0x1B -> "Điện áp cảm biến oxy ${code - 0x13}"
+    0x1C -> "Chuẩn OBD"
+    0x1D -> "Cảm biến oxy có trên xe (4 dãy)"
+    0x1E -> "Trạng thái ngõ vào phụ"
+    0x1F -> "Thời gian chạy từ lúc nổ máy"
+    0x21 -> "Quãng đường khi đèn lỗi sáng"
+    0x22 -> "Áp suất ống phân phối (chân không)"
+    0x23 -> "Áp suất ống phân phối nhiên liệu"
+    in 0x24..0x2B -> "Lambda cảm biến oxy ${code - 0x23}"
+    0x2C -> "EGR theo lệnh"
+    0x2D -> "Sai lệch EGR"
+    0x2E -> "Xả hơi xăng theo lệnh"
+    0x2F -> "Mức nhiên liệu"
+    0x30 -> "Số lần hâm nóng từ khi xoá mã lỗi"
+    0x31 -> "Quãng đường từ khi xoá mã lỗi"
+    0x32 -> "Áp suất hơi hệ thống bay hơi"
+    0x33 -> "Áp suất khí quyển"
+    in 0x34..0x3B -> "Lambda cảm biến oxy ${code - 0x33} (dòng)"
+    0x3C -> "Nhiệt độ bộ xúc tác, dãy 1 cảm biến 1"
+    0x3D -> "Nhiệt độ bộ xúc tác, dãy 2 cảm biến 1"
+    0x3E -> "Nhiệt độ bộ xúc tác, dãy 1 cảm biến 2"
+    0x3F -> "Nhiệt độ bộ xúc tác, dãy 2 cảm biến 2"
+    0x41 -> "Trạng thái kiểm tra chu kỳ lái này"
+    0x42 -> "Điện áp hộp điều khiển"
+    0x43 -> "Tải tuyệt đối"
+    0x44 -> "Tỷ lệ khí/nhiên liệu theo lệnh (lambda)"
+    0x45 -> "Vị trí bướm ga tương đối"
+    0x46 -> "Nhiệt độ môi trường"
+    0x47 -> "Vị trí bướm ga tuyệt đối B"
+    0x48 -> "Vị trí bướm ga tuyệt đối C"
+    0x49 -> "Vị trí bàn đạp ga D"
+    0x4A -> "Vị trí bàn đạp ga E"
+    0x4B -> "Vị trí bàn đạp ga F"
+    0x4C -> "Bộ chấp hành bướm ga theo lệnh"
+    0x4D -> "Thời gian đèn lỗi sáng"
+    0x4E -> "Thời gian từ khi xoá mã lỗi"
+    0x51 -> "Loại nhiên liệu"
+    0x52 -> "Tỷ lệ ethanol"
+    0x59 -> "Áp suất tuyệt đối ống phân phối"
+    0x5A -> "Vị trí bàn đạp ga tương đối"
+    0x5B -> "Dung lượng còn lại pin hybrid"
+    0x5C -> "Nhiệt độ dầu máy"
+    0x5D -> "Thời điểm phun nhiên liệu"
+    0x5E -> "Lượng nhiên liệu tiêu thụ"
+    0x5F -> "Tiêu chuẩn khí thải"
+    0x61 -> "Mô-men yêu cầu của tài xế"
+    0x62 -> "Mô-men thực của động cơ"
+    0x63 -> "Mô-men tham chiếu của động cơ"
     else -> null
 }
 
