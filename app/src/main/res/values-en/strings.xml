@@ -234,4 +234,12 @@
     <string name="settings_energy_saving">Save resources</string>
     <string name="settings_energy_saving_hint">Limit motion to 30 frames per second and turn off road motion blur.</string>
     <string name="gps_idle">GPS is idle to save resources</string>
+    <string name="settings_home_panel_title">Right side of Home</string>
+    <string name="home_panel_map">Map</string>
+    <string name="home_panel_obd">Car data (OBD)</string>
+    <string name="map_recenter">Back to the car</string>
+    <string name="map_navigate">Navigate</string>
+    <string name="map_waiting_gps">Waiting for GPS…</string>
+    <string name="map_no_key">No Google Maps key. Add MAPS_API_KEY to local.properties and build again.</string>
+    <string name="map_no_play_services">The map needs Google Play services, which this head unit lacks or must update.</string>
 </resources>

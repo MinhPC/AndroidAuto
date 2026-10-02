@@ -1,5 +1,6 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.security.MessageDigest
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
@@ -20,6 +21,17 @@ val appVersionName = "1.15.2"
 // HTTPS folder that hosts update.json and the APKs (see gradle.properties). Empty disables in-app updates.
 val updateBaseUrl = providers.gradleProperty("UPDATE_BASE_URL").getOrElse("").trim().trimEnd('/')
 
+// Google Maps on Home: MAPS_API_KEY from local.properties (or -P / gradle.properties); without one, the Android key
+// Firebase made for the project in google-services.json, which works once "Maps SDK for Android" is enabled on it.
+val mapsApiKey: String = run {
+    val local = rootProject.file("local.properties").takeIf { it.exists() }?.let { file ->
+        Properties().apply { file.inputStream().use { load(it) } }.getProperty("MAPS_API_KEY")
+    }
+    val firebase = file("google-services.json").takeIf { it.exists() }?.readText()
+        ?.let { Regex("\"current_key\"\\s*:\\s*\"([^\"]+)\"").find(it)?.groupValues?.get(1) }
+    (local ?: providers.gradleProperty("MAPS_API_KEY").orNull ?: firebase ?: "").trim()
+}
+
 android {
     namespace = "com.minhphan.launcher"
     compileSdk = 35
@@ -32,6 +44,8 @@ android {
         versionName = appVersionName
         val manifestUrl = if (updateBaseUrl.isEmpty()) "" else "$updateBaseUrl/update.json"
         buildConfigField("String", "UPDATE_MANIFEST_URL", "\"$manifestUrl\"")
+        manifestPlaceholders["mapsApiKey"] = mapsApiKey
+        buildConfigField("boolean", "HAS_MAPS_KEY", mapsApiKey.isNotEmpty().toString())
     }
 
     // The app is in Vietnamese and English only: the libraries' strings in other languages would only add weight.
@@ -76,6 +90,7 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.maps.compose)
 
     implementation(project(":shared"))
     implementation(project(":cloud"))

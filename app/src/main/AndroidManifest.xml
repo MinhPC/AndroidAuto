@@ -83,6 +83,11 @@
             </intent-filter>
         </activity>
 
+        <!-- Google Maps on Home; the key comes from the build (see app/build.gradle.kts). -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${mapsApiKey}" />
+
         <service
             android:name=".sync.TripRecorderService"
             android:exported="false"

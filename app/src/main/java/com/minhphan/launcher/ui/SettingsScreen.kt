@@ -55,6 +55,7 @@ import com.minhphan.launcher.BuildConfig
 import com.minhphan.launcher.LauncherViewModel
 import com.minhphan.launcher.R
 import com.minhphan.launcher.data.AppInfo
+import com.minhphan.launcher.data.HomePanel
 import com.minhphan.launcher.data.LastLocationStore
 import com.minhphan.launcher.data.LauncherSettings
 import com.minhphan.launcher.data.ThemeMode
@@ -145,6 +146,11 @@ private fun CarSettings(settings: LauncherSettings, viewModel: LauncherViewModel
                 viewModel::setEnergySaving,
             )
             Hint(stringResource(R.string.settings_park_hint))
+        }
+
+        SettingsCard(R.string.settings_home_panel_title) {
+            RadioRow(settings.homePanel == HomePanel.Map, stringResource(R.string.home_panel_map)) { viewModel.setHomePanel(HomePanel.Map) }
+            RadioRow(settings.homePanel == HomePanel.Obd, stringResource(R.string.home_panel_obd)) { viewModel.setHomePanel(HomePanel.Obd) }
         }
 
         SettingsCard(R.string.settings_obd_title) {

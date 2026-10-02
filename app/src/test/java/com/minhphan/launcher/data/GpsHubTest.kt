@@ -43,6 +43,11 @@ class GpsHubTest {
         assertEquals(GpsMode.Parked, gpsMode(false, true, 0, true))
     }
 
+    @Test fun mapOnScreenKeepsFastGpsEvenWithObd() {
+        assertEquals(GpsMode.Fast, gpsMode(false, false, 40, false, map = true))
+        assertEquals(GpsMode.Fast, gpsMode(false, true, 0, true, map = true))
+    }
+
     private fun connected(kmh: Int?) = ObdState.Connected(ObdValues(speedKmh = kmh))
 
     private suspend fun gpsSpeeds(vararg states: ObdState): List<Int?> = obdSpeedForGps(states.toList().asFlow()).toList()

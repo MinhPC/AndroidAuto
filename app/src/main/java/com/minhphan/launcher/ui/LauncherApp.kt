@@ -56,6 +56,7 @@ import com.minhphan.launcher.R
 import com.minhphan.launcher.data.MAX_DOCK_APPS
 import com.minhphan.launcher.data.resolveDock
 import com.minhphan.launcher.data.CarSpeed
+import com.minhphan.launcher.data.HomePanel
 import com.minhphan.launcher.data.SpeedSource
 import com.minhphan.cloud.AccountState
 import com.minhphan.launcher.sync.TripRecorderService
@@ -156,16 +157,27 @@ fun LauncherApp(viewModel: LauncherViewModel) {
     }
     // The car's speed, worked out by the scene (the adapter's, or the GPS's) and shown on the panel; read only there.
     val carSpeed = remember { mutableStateOf(CarSpeed(0f, SpeedSource.None)) }
-    val obdPanel: @Composable (Modifier, Boolean) -> Unit = { modifier, compact ->
-        ObdPanel(
-            obd = viewModel.obd,
-            speed = { carSpeed.value },
-            fields = settings.shownObdFields,
-            bluetooth = bluetooth,
-            onOpenSettings = { showSettings = true },
-            modifier = modifier,
-            compact = compact,
-        )
+    // The right half: a map that follows the car, or the car's data, as the driver picked in Settings.
+    val sidePanel: @Composable (Modifier, Boolean) -> Unit = { modifier, compact ->
+        if (settings.homePanel == HomePanel.Map) {
+            MapPanel(
+                speed = { carSpeed.value },
+                locationGranted = locationGranted,
+                covered = pageOpen,
+                modifier = modifier,
+                compact = compact,
+            )
+        } else {
+            ObdPanel(
+                obd = viewModel.obd,
+                speed = { carSpeed.value },
+                fields = settings.shownObdFields,
+                bluetooth = bluetooth,
+                onOpenSettings = { showSettings = true },
+                modifier = modifier,
+                compact = compact,
+            )
+        }
     }
     val scene: @Composable (Modifier, Shape, Float) -> Unit = { modifier, shape, focusFraction ->
         DrivingScene(
@@ -228,7 +240,7 @@ fun LauncherApp(viewModel: LauncherViewModel) {
                                     ) {
                                         updateNotice()
                                         homeBanner()
-                                        obdPanel(Modifier.weight(1f).fillMaxWidth(), compact)
+                                        sidePanel(Modifier.weight(1f).fillMaxWidth(), compact)
                                     }
                                     dock(compact)
                                 }
@@ -245,7 +257,7 @@ fun LauncherApp(viewModel: LauncherViewModel) {
                             scene(Modifier.fillMaxWidth().height(340.dp), RoundedCornerShape(24.dp), 1f)
                             updateNotice()
                             homeBanner()
-                            obdPanel(Modifier.weight(1f).fillMaxWidth(), compact)
+                            sidePanel(Modifier.weight(1f).fillMaxWidth(), compact)
                         }
                         dock(compact)
                     }

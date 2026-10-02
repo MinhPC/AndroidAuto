@@ -233,4 +233,12 @@
     <string name="settings_energy_saving">Tiết kiệm tài nguyên</string>
     <string name="settings_energy_saving_hint">Giảm chuyển động xuống tối đa 30 khung hình/giây và tắt hiệu ứng mờ mặt đường.</string>
     <string name="gps_idle">GPS đang nghỉ để tiết kiệm tài nguyên</string>
+    <string name="settings_home_panel_title">Bên phải màn hình chính</string>
+    <string name="home_panel_map">Bản đồ</string>
+    <string name="home_panel_obd">Thông số xe (OBD)</string>
+    <string name="map_recenter">Về vị trí xe</string>
+    <string name="map_navigate">Dẫn đường</string>
+    <string name="map_waiting_gps">Đang chờ GPS…</string>
+    <string name="map_no_key">Chưa có khóa Google Maps. Thêm MAPS_API_KEY vào local.properties rồi build lại.</string>
+    <string name="map_no_play_services">Bản đồ cần Google Play Services, mà đầu xe này chưa có hoặc cần cập nhật.</string>
 </resources>

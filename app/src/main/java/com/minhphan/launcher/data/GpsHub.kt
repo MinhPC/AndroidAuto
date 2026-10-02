@@ -26,11 +26,13 @@ import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.update
 
-internal enum class GpsUse { Speed, Recording }
+internal enum class GpsUse { Speed, Recording, Map }
 internal enum class GpsMode(val intervalMs: Long) { Off(0), Fast(1_000), Parked(30_000) }
 internal data class GpsReading(val location: Location?, val requested: Boolean, val intervalMs: Long = 1_000)
 
-internal fun gpsMode(needsSpeed: Boolean, recording: Boolean, obdKmh: Int?, parkedLong: Boolean): GpsMode = when {
+/** [map]: a map on screen follows the car, so it needs every fix whatever OBD knows. */
+internal fun gpsMode(needsSpeed: Boolean, recording: Boolean, obdKmh: Int?, parkedLong: Boolean, map: Boolean = false): GpsMode = when {
+    map -> GpsMode.Fast
     !recording && (!needsSpeed || obdKmh != null) -> GpsMode.Off
     recording && obdKmh == 0 && parkedLong -> GpsMode.Parked
     else -> GpsMode.Fast
@@ -88,17 +90,17 @@ internal class GpsHub(
 
     private val ids = AtomicInteger()
     private val clients = MutableStateFlow<Map<Int, GpsUse>>(emptyMap())
-    private data class Demand(val speed: Boolean, val recording: Boolean, val obdKmh: Int?)
+    private data class Demand(val speed: Boolean, val recording: Boolean, val obdKmh: Int?, val map: Boolean)
 
     private val readings = combine(clients, obdSpeed) { uses, kmh ->
         val recording = GpsUse.Recording in uses.values
         // Joining/leaving the Home screen must not restart the parked timer during recording.
-        Demand(!recording && GpsUse.Speed in uses.values, recording, kmh)
+        Demand(!recording && GpsUse.Speed in uses.values, recording, kmh, GpsUse.Map in uses.values)
     }.distinctUntilChanged().transformLatest { demand ->
-        emit(gpsMode(demand.speed, demand.recording, demand.obdKmh, parkedLong = false))
+        emit(gpsMode(demand.speed, demand.recording, demand.obdKmh, parkedLong = false, map = demand.map))
         // Only OBD can reliably wake GPS as soon as the parked car moves again.
         // Without OBD we retain fast GPS even at a standstill, avoiding a delayed speed reading.
-        if (demand.recording && demand.obdKmh == 0) {
+        if (demand.recording && !demand.map && demand.obdKmh == 0) {
             delay(parkedAfterMs)
             emit(GpsMode.Parked)
         }
