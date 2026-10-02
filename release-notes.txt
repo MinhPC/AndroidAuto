@@ -1,4 +1,4 @@
-GPS dùng chung một nguồn cho màn hình chính, đồng hồ hành trình và ghi chuyến đi, thay vì mỗi phần bật GPS riêng.
-GPS tự nghỉ khi OBD đã báo tốc độ và không ghi chuyến đi; chấm GPS chuyển sang màu xám thay vì nhấp nháy đỏ.
-Khi đang ghi chuyến đi mà xe đỗ (kể cả đã tắt máy), GPS giảm xuống 30 giây một lần và trở lại ngay khi xe lăn bánh.
-Adapter OBD rớt kết nối thoáng qua không làm GPS phải khởi động lại; xe đang chạy mà ECU ngừng trả lời thì GPS tiếp quản ngay.
+Bản đồ Google Maps ở nửa phải màn hình chính, thay cho thông số OBD; đổi lại trong Cài đặt → "Bên phải màn hình chính".
+Bản đồ bám theo xe, mũi tên chỉ hướng đi, có lớp giao thông và tự chuyển sáng / tối theo giao diện.
+Kéo bản đồ để xem chỗ khác; nút "Về vị trí xe" (hoặc để yên 15 giây) đưa bản đồ về lại xe.
+Tốc độ hiện ở góc bản đồ; nút "Dẫn đường" mở ứng dụng dẫn đường tại vị trí hiện tại.
