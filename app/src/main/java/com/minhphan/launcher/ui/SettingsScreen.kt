@@ -55,6 +55,7 @@ import com.minhphan.launcher.BuildConfig
 import com.minhphan.launcher.LauncherViewModel
 import com.minhphan.launcher.R
 import com.minhphan.launcher.data.AppInfo
+import com.minhphan.launcher.data.HomeLayout
 import com.minhphan.launcher.data.HomePanel
 import com.minhphan.launcher.data.LastLocationStore
 import com.minhphan.launcher.data.LauncherSettings
@@ -148,9 +149,18 @@ private fun CarSettings(settings: LauncherSettings, viewModel: LauncherViewModel
             Hint(stringResource(R.string.settings_park_hint))
         }
 
-        SettingsCard(R.string.settings_home_panel_title) {
-            RadioRow(settings.homePanel == HomePanel.Map, stringResource(R.string.home_panel_map)) { viewModel.setHomePanel(HomePanel.Map) }
-            RadioRow(settings.homePanel == HomePanel.Obd, stringResource(R.string.home_panel_obd)) { viewModel.setHomePanel(HomePanel.Obd) }
+        SettingsCard(R.string.settings_home_layout_title) {
+            RadioRow(settings.homeLayout == HomeLayout.Scene, stringResource(R.string.home_layout_scene)) { viewModel.setHomeLayout(HomeLayout.Scene) }
+            RadioRow(settings.homeLayout == HomeLayout.Map, stringResource(R.string.home_layout_map)) { viewModel.setHomeLayout(HomeLayout.Map) }
+            Hint(stringResource(R.string.home_layout_hint))
+        }
+
+        // The right half is the scene's only; the full-screen map has none.
+        if (settings.homeLayout == HomeLayout.Scene) {
+            SettingsCard(R.string.settings_home_panel_title) {
+                RadioRow(settings.homePanel == HomePanel.Map, stringResource(R.string.home_panel_map)) { viewModel.setHomePanel(HomePanel.Map) }
+                RadioRow(settings.homePanel == HomePanel.Obd, stringResource(R.string.home_panel_obd)) { viewModel.setHomePanel(HomePanel.Obd) }
+            }
         }
 
         SettingsCard(R.string.settings_obd_title) {

@@ -27,6 +27,15 @@ enum class ThemeMode {
     Dark,
 }
 
+/** What Home is built on. */
+enum class HomeLayout {
+    /** The Civic on the road, with the [HomePanel] over its right half. */
+    Scene,
+
+    /** A map over the whole screen, with no scene to draw under it: the lighter of the two. */
+    Map,
+}
+
 /** What Home shows over the right half of the scene. */
 enum class HomePanel {
     /** A map that follows the car. */
@@ -52,7 +61,10 @@ data class LauncherSettings(
     val dockApps: List<String> = DEFAULT_DOCK_APPS,
     /** Lower scene frame rate and omit road blur on slower head units. */
     val energySaving: Boolean = false,
+    val homeLayout: HomeLayout = HomeLayout.Scene,
     val homePanel: HomePanel = HomePanel.Map,
+    /** The map turns and tilts with the car, as Google Maps does while navigating; false keeps north up. */
+    val mapHeadingUp: Boolean = true,
 ) {
     /** The chosen values the car can fill: what Home shows. The others stay saved, in case the car lists them again. */
     val shownObdFields: List<ObdField> get() = obdFields.filter { it in availableFields(carPids) }
@@ -76,9 +88,19 @@ class SettingsStore(context: Context) {
         _settings.value = _settings.value.copy(energySaving = value)
     }
 
+    fun setHomeLayout(value: HomeLayout) {
+        prefs.edit().putString(KEY_HOME_LAYOUT, value.name).apply()
+        _settings.value = _settings.value.copy(homeLayout = value)
+    }
+
     fun setHomePanel(value: HomePanel) {
         prefs.edit().putString(KEY_HOME_PANEL, value.name).apply()
         _settings.value = _settings.value.copy(homePanel = value)
+    }
+
+    fun setMapHeadingUp(value: Boolean) {
+        prefs.edit().putBoolean(KEY_MAP_HEADING_UP, value).apply()
+        _settings.value = _settings.value.copy(mapHeadingUp = value)
     }
 
     fun setObdAddress(value: String) {
@@ -148,13 +170,17 @@ class SettingsStore(context: Context) {
         carPids = decodeCarPids(prefs.getString(KEY_CAR_PIDS, null)),
         dockApps = decodeDockApps(prefs.getString(KEY_DOCK_APPS, null)),
         energySaving = prefs.getBoolean(KEY_ENERGY_SAVING, false),
+        homeLayout = enumOrDefault(prefs.getString(KEY_HOME_LAYOUT, null), HomeLayout.Scene),
         homePanel = enumOrDefault(prefs.getString(KEY_HOME_PANEL, null), HomePanel.Map),
+        mapHeadingUp = prefs.getBoolean(KEY_MAP_HEADING_UP, true),
     )
 
     private companion object {
         const val KEY_THEME = "theme_mode"
         const val KEY_ENERGY_SAVING = "energy_saving"
+        const val KEY_HOME_LAYOUT = "home_layout"
         const val KEY_HOME_PANEL = "home_panel"
+        const val KEY_MAP_HEADING_UP = "map_heading_up"
         const val KEY_OBD = "obd_address"
         const val KEY_SYNC = "sync_trips"
         const val KEY_OBD_FIELDS = "obd_fields"

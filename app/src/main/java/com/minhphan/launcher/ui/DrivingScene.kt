@@ -56,6 +56,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -89,6 +90,9 @@ private val OverlayShadow = Shadow(color = Color.Black.copy(alpha = 0.45f), offs
  * do not show, and when it is stopped everything stands still.
  * Needs the location permission, which it asks for once on first use. While a full-screen page is [covered] over it
  * the scene stops drawing, since nobody can see it and a moving car would otherwise animate every frame for nothing.
+ *
+ * Without the [road] (over the full-screen map) there is no scene at all, so nothing animates: the time and the date
+ * sit small on a card at the top, and the trip button by the GPS dot in the bottom left corner.
  */
 @Composable
 fun DrivingScene(
@@ -101,6 +105,7 @@ fun DrivingScene(
     covered: Boolean = false,
     focusFraction: Float = 1f,
     energySaving: Boolean = false,
+    road: Boolean = true,
 ) {
     val context = LocalContext.current
     var granted by remember { mutableStateOf(hasLocationPermission(context)) }
@@ -162,31 +167,51 @@ fun DrivingScene(
         val textColor = Color.White
         val softColor = Color.White.copy(alpha = 0.96f)
 
-        CivicScene(
-            targetSpeedKmh = targetKmh,
-            quickSpeed = speed.source == SpeedSource.Obd,
-            moving = moving,
-            covered = covered,
-            modifier = Modifier.fillMaxSize(),
-            focusFraction = focusFraction,
-            energySaving = energySaving,
-        )
+        if (road) {
+            CivicScene(
+                targetSpeedKmh = targetKmh,
+                quickSpeed = speed.source == SpeedSource.Obd,
+                moving = moving,
+                covered = covered,
+                modifier = Modifier.fillMaxSize(),
+                focusFraction = focusFraction,
+                energySaving = energySaving,
+            )
+        }
 
         // The time, the GPS dot and the trip button keep to the part of the scene where the car is. The scene runs on
         // under the navigation bar, but they keep above it, level with the bottom of the dock beside them.
         Box(Modifier.fillMaxHeight().width(w)) {
             val bottomBar = Modifier.windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Bottom))
-            // The time, large, and the date under it, in the sky over the road.
-            Clock(
-                now = now,
-                timeSize = size(0.13f),
-                dateSize = size(0.045f),
-                lunarSize = size(0.032f),
-                color = textColor,
-                dateColor = softColor,
-                shadow = OverlayShadow,
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = h * 0.035f),
-            )
+            if (road) {
+                // The time, large, and the date under it, in the sky over the road.
+                Clock(
+                    now = now,
+                    timeSize = size(0.13f),
+                    dateSize = size(0.045f),
+                    lunarSize = size(0.032f),
+                    color = textColor,
+                    dateColor = softColor,
+                    shadow = OverlayShadow,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = h * 0.035f),
+                )
+            } else {
+                // Over the map, small on a card of its own, so the streets under it show.
+                Clock(
+                    now = now,
+                    timeSize = 34.sp,
+                    dateSize = 14.sp,
+                    lunarSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    dateColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 12.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
+                        .padding(horizontal = 18.dp, vertical = 6.dp),
+                )
+            }
 
             // In the corner, clear of the car, which sits low in the scene.
             Column(
@@ -222,13 +247,17 @@ fun DrivingScene(
                     }
                 }
                 GpsDot(hasFix, idle = drive == DriveState.NotNeeded)
+                // Over the map its corner on the right holds the map's own buttons.
+                if (!road) TripButton(running = tripRunning, onClick = onOpenTrip)
             }
 
-            TripButton(
-                running = tripRunning,
-                onClick = onOpenTrip,
-                modifier = Modifier.align(Alignment.BottomEnd).then(bottomBar).padding(end = 16.dp, bottom = 12.dp),
-            )
+            if (road) {
+                TripButton(
+                    running = tripRunning,
+                    onClick = onOpenTrip,
+                    modifier = Modifier.align(Alignment.BottomEnd).then(bottomBar).padding(end = 16.dp, bottom = 12.dp),
+                )
+            }
         }
     }
 }

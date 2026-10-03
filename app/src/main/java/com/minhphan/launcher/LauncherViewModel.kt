@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.minhphan.launcher.data.AppInfo
 import com.minhphan.launcher.data.AppRepository
+import com.minhphan.launcher.data.HomeLayout
 import com.minhphan.launcher.data.HomePanel
 import com.minhphan.launcher.data.LauncherSettings
 import com.minhphan.launcher.data.ScreenLight
@@ -155,7 +156,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun setEnergySaving(value: Boolean) = settingsStore.setEnergySaving(value)
 
+    fun setHomeLayout(value: HomeLayout) = settingsStore.setHomeLayout(value)
+
     fun setHomePanel(value: HomePanel) = settingsStore.setHomePanel(value)
+
+    fun setMapHeadingUp(value: Boolean) = settingsStore.setMapHeadingUp(value)
 
     /** Takes the screen's brightness now as its day brightness, for [ThemeMode.Headlights]. */
     fun relearnDayBrightness() = launcher.headlights.relearn()

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -41,10 +42,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -56,6 +59,7 @@ import com.minhphan.launcher.R
 import com.minhphan.launcher.data.MAX_DOCK_APPS
 import com.minhphan.launcher.data.resolveDock
 import com.minhphan.launcher.data.CarSpeed
+import com.minhphan.launcher.data.HomeLayout
 import com.minhphan.launcher.data.HomePanel
 import com.minhphan.launcher.data.SpeedSource
 import com.minhphan.cloud.AccountState
@@ -164,8 +168,11 @@ fun LauncherApp(viewModel: LauncherViewModel) {
                 speed = { carSpeed.value },
                 locationGranted = locationGranted,
                 covered = pageOpen,
+                headingUp = settings.mapHeadingUp,
+                onHeadingUpChange = viewModel::setMapHeadingUp,
                 modifier = modifier,
                 compact = compact,
+                energySaving = settings.energySaving,
             )
         } else {
             ObdPanel(
@@ -179,6 +186,7 @@ fun LauncherApp(viewModel: LauncherViewModel) {
             )
         }
     }
+    val mapHome = settings.homeLayout == HomeLayout.Map
     val scene: @Composable (Modifier, Shape, Float) -> Unit = { modifier, shape, focusFraction ->
         DrivingScene(
             obd = viewModel.obd,
@@ -190,6 +198,7 @@ fun LauncherApp(viewModel: LauncherViewModel) {
             covered = pageOpen,
             focusFraction = focusFraction,
             energySaving = settings.energySaving,
+            road = !mapHome,
         )
     }
     // Worked out again only when the driver's choice or the installed apps change.
@@ -227,7 +236,41 @@ fun LauncherApp(viewModel: LauncherViewModel) {
                 val navigationBar = with(LocalDensity.current) { WindowInsets.navigationBars.getBottom(this).toDp() }
                 val compact = maxHeight - navigationBar < CompactBelow
                 val margin = if (compact) CompactPageMargin else PageMargin
-                if (maxWidth > maxHeight) {
+                if (mapHome) {
+                    // The map over the whole screen. The scene, here without its road, still works out the speed and
+                    // asks for the location; it only adds the time, the GPS dot and the trip button over the map.
+                    val density = LocalDensity.current
+                    var dockHeight by remember { mutableStateOf(0.dp) }
+                    MapPanel(
+                        speed = { carSpeed.value },
+                        locationGranted = locationGranted,
+                        covered = pageOpen,
+                        headingUp = settings.mapHeadingUp,
+                        onHeadingUpChange = viewModel::setMapHeadingUp,
+                        modifier = Modifier.fillMaxSize(),
+                        compact = compact,
+                        fullScreen = true,
+                        clearOf = PaddingValues(bottom = dockHeight),
+                        energySaving = settings.energySaving,
+                    )
+                    scene(Modifier.fillMaxSize(), RectangleShape, 1f)
+                    val side = if (maxWidth > maxHeight) 1f - SCENE_SHARE else 1f
+                    Column(
+                        Modifier.align(Alignment.TopEnd).fillMaxWidth(side).padding(top = 64.dp).padding(margin),
+                        verticalArrangement = Arrangement.spacedBy(margin),
+                    ) {
+                        updateNotice()
+                        homeBanner()
+                    }
+                    Box(
+                        Modifier
+                            .align(Alignment.BottomEnd)
+                            .fillMaxWidth(side)
+                            .onSizeChanged { dockHeight = with(density) { it.height.toDp() } },
+                    ) {
+                        dock(compact)
+                    }
+                } else if (maxWidth > maxHeight) {
                     Column(Modifier.fillMaxSize()) {
                         Box(Modifier.weight(1f).fillMaxWidth()) {
                             scene(Modifier.fillMaxSize(), RectangleShape, SCENE_SHARE)
