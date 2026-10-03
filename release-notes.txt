@@ -1,4 +1,4 @@
-Bản đồ Google Maps ở nửa phải màn hình chính, thay cho thông số OBD; đổi lại trong Cài đặt → "Bên phải màn hình chính".
-Bản đồ bám theo xe, mũi tên chỉ hướng đi, có lớp giao thông và tự chuyển sáng / tối theo giao diện.
-Kéo bản đồ để xem chỗ khác; nút "Về vị trí xe" (hoặc để yên 15 giây) đưa bản đồ về lại xe.
-Tốc độ hiện ở góc bản đồ; nút "Dẫn đường" mở ứng dụng dẫn đường tại vị trí hiện tại.
+Màn hình chính có thêm kiểu "Bản đồ toàn màn hình" (Cài đặt → Màn hình chính): nhẹ hơn vì không vẽ cảnh xe chạy bên dưới.
+Bản đồ hiển thị như ứng dụng Google Maps, tối màu vào ban đêm; xe hiện bằng hình chiếc sedan nhìn từ trên xuống thay cho mũi tên.
+Bản đồ xoay và nghiêng theo hướng xe như khi dẫn đường trên Google Maps; nút la bàn chuyển về kiểu hướng bắc lên trên.
+Bản đồ không còn vẽ lại liên tục khi xe đứng yên; bật "Tiết kiệm tài nguyên" để bản đồ tốn ít tài nguyên hơn khi xe chạy.
